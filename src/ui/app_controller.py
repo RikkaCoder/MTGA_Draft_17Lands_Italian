@@ -5,6 +5,7 @@ DraftOrchestrator, background tasks, and executes the mathematical evaluation en
 """
 
 import logging
+from src.i18n import tr
 import queue
 import os
 import sys
@@ -38,7 +39,7 @@ class AppController:
             return
 
         try:
-            self.app.vars["status_text"].set("Syncing with Arena...")
+            self.app.vars["status_text"].set(tr("status.syncing"))
             self.app.layout_manager.restore_window_state()
 
             # START THE ENGINE
@@ -146,10 +147,10 @@ class AppController:
 
     def force_reload(self):
         """Forces a deep scan of the active Arena Log."""
-        self.app.vars["status_text"].set("Deep Scanning Log...")
+        self.app.vars["status_text"].set(tr("status.deep_scan"))
         if hasattr(self.app, "loading_overlay"):
             self.app.loading_overlay.show("Reloading Application State")
-            self.app.loading_overlay.update_status("Deep Scanning Log...")
+            self.app.loading_overlay.update_status(tr("status.deep_scan"))
         self.root.update_idletasks()
 
         with self.orchestrator.scanner.lock:
@@ -227,11 +228,11 @@ class AppController:
 
         # UPDATE UI STATE
         if pk > 0:
-            self.app.vars["status_text"].set(f"Pack {pk} Pick {pi}")
+            self.app.vars["status_text"].set(tr("status.pack_pick", pack=pk, pick=pi))
             if hasattr(self.app.top_bar, "lbl_status"):
                 self.app.top_bar.lbl_status.configure(bootstyle="success")
         else:
-            self.app.vars["status_text"].set("Waiting for draft...")
+            self.app.vars["status_text"].set(tr("status.waiting_draft"))
             if hasattr(self.app.top_bar, "lbl_status"):
                 self.app.top_bar.lbl_status.configure(bootstyle="secondary")
 

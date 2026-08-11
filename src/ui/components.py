@@ -13,6 +13,7 @@ from PIL import Image, ImageTk
 from concurrent.futures import ThreadPoolExecutor
 from src import constants
 from src.card_logic import field_process_sort
+from src.i18n import card_name as localized_card_name, column_label, tag_label, tr, type_label
 from src.ui.styles import Theme
 
 
@@ -269,22 +270,23 @@ class CardToolTip(tkinter.Toplevel):
         except Exception:
             pass
 
-        name = card.get("name", "Unknown")
+        name = localized_card_name(card)
         stats = card.get("deck_colors", {})
         urls = card.get("image", [])
         tags = card.get("tags", [])
-        rarity = str(card.get("rarity") or "common").capitalize()
+        rarity_key = str(card.get("rarity") or "common").lower()
+        rarity = tr(f"tooltip.{rarity_key}")
 
         h = tb.Frame(self, bootstyle="secondary")
         h.pack(fill="x")
         rc = (
             "#f97316"
-            if rarity == "Mythic"
+            if rarity_key == "mythic"
             else (
                 "#eab308"
-                if rarity == "Rare"
+                if rarity_key == "rare"
                 else "#38bdf8"
-                if rarity == "Uncommon"
+                if rarity_key == "uncommon"
                 else None
             )
         )
@@ -332,7 +334,7 @@ class CardToolTip(tkinter.Toplevel):
         wr, iwd, smp = gs.get("gihwr", 0.0), gs.get("iwd", 0.0), gs.get("samples", 0)
         tb.Label(
             sf,
-            text="GLOBAL PERFORMANCE",
+            text=tr("tooltip.global_performance"),
             bootstyle="primary",
             font=(Theme.FONT_FAMILY, int(10 * scale), "bold"),
         ).pack(anchor="w")
@@ -347,18 +349,18 @@ class CardToolTip(tkinter.Toplevel):
 
         mt = [
             [
-                ("GIH WR:", fp(wr), Theme.SUCCESS if wr >= 55.0 else Theme.TEXT_MAIN),
+                (f"{column_label('gihwr', full=True)}:", fp(wr), Theme.SUCCESS if wr >= 55.0 else Theme.TEXT_MAIN),
                 (
-                    "IWD:",
+                    f"{column_label('iwd', full=True)}:",
                     fp(iwd, True),
                     Theme.ACCENT if iwd >= 3.0 else Theme.TEXT_MAIN,
                 ),
             ],
             [
-                ("ALSA:", fn(gs.get("alsa", 0.0)), Theme.TEXT_MAIN),
-                ("ATA:", fn(gs.get("ata", 0.0)), Theme.TEXT_MAIN),
+                (f"{column_label('alsa', full=True)}:", fn(gs.get("alsa", 0.0)), Theme.TEXT_MAIN),
+                (f"{column_label('ata', full=True)}:", fn(gs.get("ata", 0.0)), Theme.TEXT_MAIN),
             ],
-            [("Games:", f"{fn(smp)}", Theme.TEXT_MAIN), ("", "", "")],
+            [(tr("tooltip.games"), f"{fn(smp)}", Theme.TEXT_MAIN), ("", "", "")],
         ]
         for ri, row in enumerate(mt):
             for ci, (lbl, val, col) in enumerate(row):
@@ -392,7 +394,7 @@ class CardToolTip(tkinter.Toplevel):
         if va:
             tb.Label(
                 sf,
-                text="ARCHETYPE PLAY SHARE",
+                text=tr("tooltip.archetype_share"),
                 bootstyle="success",
                 font=(Theme.FONT_FAMILY, int(10 * scale), "bold"),
             ).pack(anchor="w")
@@ -406,7 +408,7 @@ class CardToolTip(tkinter.Toplevel):
                 ).pack(side="left")
                 tb.Label(
                     rf,
-                    text=f" {stats[k].get('gihwr', 0.0):.1f}% WR",
+                    text=f" {stats[k].get('gihwr', 0.0):.1f}% {tr('tooltip.win_rate')}",
                     foreground=(
                         None if stats[k].get("gihwr", 0.0) < 55.0 else Theme.SUCCESS
                     ),
@@ -415,14 +417,14 @@ class CardToolTip(tkinter.Toplevel):
         if tags:
             tb.Label(
                 sf,
-                text="CARD ROLES",
+                text=tr("tooltip.card_roles"),
                 bootstyle="warning",
                 font=(Theme.FONT_FAMILY, int(10 * scale), "bold"),
             ).pack(anchor="w", pady=Theme.scaled_val((12, 4)))
             tb.Label(
                 sf,
                 text="   ".join(
-                    [constants.TAG_VISUALS.get(t, t.capitalize()) for t in tags]
+                    [tag_label(t) for t in tags]
                 ),
                 font=(Theme.FONT_FAMILY, int(9 * scale), "bold"),
                 wraplength=int(280 * scale),
@@ -444,7 +446,7 @@ class CardToolTip(tkinter.Toplevel):
         if hasattr(self, "winfo_exists") and self.winfo_exists():
             if hasattr(self, "img_label"):
                 self.img_label.configure(
-                    text="Image\nUnavailable", 
+                    text=tr("errors.image_unavailable"),
                     justify="center", 
                     anchor="center",
                     foreground=Theme.ERROR,
@@ -713,8 +715,6 @@ class ModernTreeview(ttk.Treeview):
         return view_id
 
     def _setup_headers(self, columns):
-        from src.constants import COLUMN_FIELD_LABELS
-
         for i in columns:
             if i == "add_btn":
                 self.heading(i, text="+")
@@ -729,7 +729,7 @@ class ModernTreeview(ttk.Treeview):
             l = (
                 i
                 if "TIER" in i
-                else COLUMN_FIELD_LABELS.get(i, str(i).upper()).split(":")[0]
+                else column_label(i)
             )
             self.base_labels[i] = l
 
@@ -1122,18 +1122,18 @@ class DynamicTreeviewManager(ttk.Frame):
 
         if field != "name":
             menu.add_command(
-                label=f"Remove '{field.upper()}'",
+                label=tr("columns.remove", field=column_label(field)),
                 command=lambda f=field: self._remove_column_by_name(f),
             )
             menu.add_separator()
 
         am = tkinter.Menu(menu, tearoff=0)
-        menu.add_cascade(label="Add Column", menu=am)
+        menu.add_cascade(label=tr("columns.add"), menu=am)
         from src.constants import COLUMN_FIELD_LABELS
 
         for fi, lb in COLUMN_FIELD_LABELS.items():
             if fi not in self.active_fields:
-                am.add_command(label=lb, command=lambda x=fi: self._add_column(x))
+                am.add_command(label=column_label(fi, full=True), command=lambda x=fi: self._add_column(x))
         from src.tier_list import TierList
 
         latest_dataset = getattr(self.config.card_data, "latest_dataset", "")
@@ -1149,7 +1149,7 @@ class DynamicTreeviewManager(ttk.Frame):
                         command=lambda x=internal_id: self._add_column(x),
                     )
         menu.add_separator()
-        menu.add_command(label="Reset to Defaults", command=self._reset_defaults)
+        menu.add_command(label=tr("columns.reset"), command=self._reset_defaults)
         menu.post(event.x_root, event.y_root)
 
     def _handle_click(self, event):
@@ -1169,7 +1169,7 @@ class DynamicTreeviewManager(ttk.Frame):
 
         for f, lb in COLUMN_FIELD_LABELS.items():
             if f not in self.active_fields:
-                menu.add_command(label=lb, command=lambda x=f: self._add_column(x))
+                menu.add_command(label=column_label(f, full=True), command=lambda x=f: self._add_column(x))
 
         from src.tier_list import TierList
 
@@ -1434,7 +1434,7 @@ class TypePieChart(tb.Frame):
             self.canvas.create_text(
                 sx + Theme.scaled_val(12),
                 ly,
-                text=f"{lb}: {count}",
+                text=f"{type_label(lb)}: {count}",
                 fill=Theme.TEXT_MAIN,
                 font=Theme.scaled_font(9),
                 anchor="w",
@@ -1530,7 +1530,7 @@ class CardPile(tb.Frame):
         self.container.pack(fill=BOTH, expand=True)
 
     def add_card(self, card_data):
-        nm = card_data.get("name", "Unknown")
+        nm = localized_card_name(card_data)
         ct = card_data.get("mana_cost", "")
         cn = card_data.get("count", 1)
 

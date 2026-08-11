@@ -16,6 +16,7 @@ from src.ui_progress import UIProgress
 from src.seventeenlands import Seventeenlands
 from src.scryfall_tagger import ScryfallTagger
 from src.constants import COLOR_WIN_RATE_GAME_COUNT_THRESHOLD_DEFAULT
+from src.i18n import tr
 
 logger = create_logger()
 
@@ -335,7 +336,7 @@ class FileExtractor(UIProgress):
         Modified download logic to support multi-archetype data for 'The Brain'.
         Fixed to return proper tuple (success, msg, size) and load local data first.
         """
-        self._update_status("Searching Local Files")
+        self._update_status(tr("extract.searching_local"))
         # 1. Load the local card database (Name, ID, Colors)
         result, result_string, temp_size = self._retrieve_local_arena_data(
             database_size
@@ -344,7 +345,7 @@ class FileExtractor(UIProgress):
         if not result:
             return False, result_string, 0
 
-        self._update_status("Starting Deep Data Retrieval...")
+        self._update_status(tr("extract.starting_deep"))
 
         sl = Seventeenlands()
 
@@ -430,39 +431,39 @@ class FileExtractor(UIProgress):
         tag_status = str(cards_with_tags)
         if cards_with_tags == 0:
             if tag_errors:
-                tag_status += " (Network/API Error)"
+                tag_status += f" ({tr('extract.tag_network_error')})"
             else:
-                tag_status += " (Not yet tagged by Scryfall community)"
+                tag_status += f" ({tr('extract.not_tagged')})"
 
         stats_msg = (
-            f"17Lands Coverage: {matched_count} / {total_17lands_count} cards ({coverage_pct:.1f}%)\n"
-            f"Archetypes Downloaded: {archetypes_found}\n"
-            f"Cards with Scryfall Tags: {tag_status}\n\n"
+            f"{tr('extract.coverage', matched=matched_count, total=total_17lands_count, percent=f'{coverage_pct:.1f}')}\n"
+            f"{tr('extract.archetypes', count=archetypes_found)}\n"
+            f"{tr('extract.tagged_cards', status=tag_status)}\n\n"
         )
 
         if matched_count == 0:
-            stats_msg += "\n\n⚠️ WARNING: 0 cards matched! Please launch Magic Arena to ensure the latest game files are downloaded, then try again."
+            stats_msg += f"\n\n{tr('extract.zero_matches')}"
 
         if total_cards < 50:
-            stats_msg += "\n\n⚠️ WARNING: Very few MTGA cards were found! Please launch Magic Arena to ensure the latest game files are downloaded, then try again."
+            stats_msg += f"\n\n{tr('extract.few_cards')}"
 
         if filename:
             if not self.combined_data.get("color_ratings"):
                 if self.combined_data["meta"].get("game_count", 0) == 0:
                     return (
                         True,
-                        f"Local Cards Downloaded. 17Lands data not yet available for this set.\n\n{stats_msg}",
+                        f"{tr('extract.local_only')}\n\n{stats_msg}",
                         temp_size,
                     )
                 else:
                     return (
                         True,
-                        f"Cards Downloaded, but no color archetypes met your 'Min Games' threshold.\n\n{stats_msg}",
+                        f"{tr('extract.threshold')}\n\n{stats_msg}",
                         temp_size,
                     )
-            return True, f"Download Successful!\n\n{stats_msg}", temp_size
+            return True, f"{tr('extract.success')}\n\n{stats_msg}", temp_size
         else:
-            return False, "Dataset Validation Failed", 0
+            return False, tr("extract.validation_failed"), 0
 
     def _assemble_deep_set(self, deep_ratings: Dict):
         """Combines 17Lands intelligence with local Arena IDs."""
@@ -541,13 +542,13 @@ class FileExtractor(UIProgress):
                     break
 
                 self._update_progress(10, True)
-                self._update_status("Collecting 17Lands Data")
+                self._update_status(tr("extract.collecting"))
 
                 if not self.retrieve_17lands_data(
                     self.selected_sets.seventeenlands, self.deck_colors
                 ):
                     result = False
-                    result_string = "Couldn't Collect 17Lands Data"
+                    result_string = tr("extract.collect_failed")
                     break
 
                 matching_only = (
@@ -559,7 +560,7 @@ class FileExtractor(UIProgress):
                 if not matching_only:
                     self._initialize_17lands_data()
 
-                self._update_status("Building Data Set File")
+                self._update_status(tr("extract.building"))
                 self._assemble_set(matching_only)
                 check_set_data(self.combined_data["card_ratings"], self.card_ratings)
                 break
@@ -573,12 +574,12 @@ class FileExtractor(UIProgress):
     def _retrieve_local_arena_data(self, previous_database_size):
         """Builds a card data file from raw Arena files"""
         result_string = (
-            "Unable to access local Arena data. Log in to MTGA and try again."
+            tr("extract.local_unavailable")
         )
         result = False
         self.card_dict = {}
         database_size = 0
-        self._update_status("Searching Local Files")
+        self._update_status(tr("extract.searching_local"))
         if sys.platform == constants.PLATFORM_ID_OSX:
             if not self.directory:
                 # Standard MTGA installation path
@@ -678,7 +679,7 @@ class FileExtractor(UIProgress):
                         "Local Database Data: Searching File Path %s",
                         arena_database_locations[0],
                     )
-                    self._update_status("Retrieving Localization Data")
+                    self._update_status(tr("extract.localization"))
                     result, card_text, card_enumerators, raw_card_data = (
                         self._retrieve_local_database(arena_database_locations[0])
                     )
@@ -686,7 +687,7 @@ class FileExtractor(UIProgress):
                     if not result:
                         break
 
-                    self._update_status("Building Temporary Card Data File")
+                    self._update_status(tr("extract.building_temp"))
                     result = self._assemble_stored_data(
                         card_text, card_enumerators, raw_card_data
                     )
@@ -694,7 +695,7 @@ class FileExtractor(UIProgress):
                     if not result:
                         break
 
-                self._update_status("Retrieving Temporary Card Data")
+                self._update_status(tr("extract.retrieving_temp"))
                 result = self._retrieve_stored_data(self.selected_sets.arena)
 
                 database_size = current_database_size
@@ -1153,7 +1154,7 @@ class FileExtractor(UIProgress):
                     try:
                         # safe_set_code = quote(set_code, safe='')
                         # url = f"https://www.17lands.com/card_ratings/data?expansion={safe_set_code}&format={self.draft}&start_date={self.start_date}&end_date={self.end_date}{user_group}"
-                        self._update_status(f"Collecting {color} 17Lands Data")
+                        self._update_status(tr("extract.collecting_color", color=color))
                         seventeenlands.download_card_ratings(
                             set_code,
                             color,
@@ -1171,7 +1172,13 @@ class FileExtractor(UIProgress):
                         if retry:
                             attempt_count = constants.CARD_RATINGS_ATTEMPT_MAX - retry
                             self._update_status(
-                                f"""Collecting {color} 17Lands Data - Request Failed ({attempt_count}/{constants.CARD_RATINGS_ATTEMPT_MAX}) - Retry in {constants.CARD_RATINGS_BACKOFF_DELAY_SECONDS} seconds"""
+                                tr(
+                                    "extract.retry_collect",
+                                    color=color,
+                                    attempt=attempt_count,
+                                    maximum=constants.CARD_RATINGS_ATTEMPT_MAX,
+                                    seconds=constants.CARD_RATINGS_BACKOFF_DELAY_SECONDS,
+                                )
                             )
                             time.sleep(constants.CARD_RATINGS_BACKOFF_DELAY_SECONDS)
 
@@ -1256,7 +1263,11 @@ class FileExtractor(UIProgress):
                 if retry:
                     attempt_count = constants.CARD_RATINGS_ATTEMPT_MAX - retry
                     self._update_status(
-                        f"Retrying Color Ratings ({attempt_count}/{constants.CARD_RATINGS_ATTEMPT_MAX})..."
+                        tr(
+                            "extract.retry_ratings",
+                            attempt=attempt_count,
+                            maximum=constants.CARD_RATINGS_ATTEMPT_MAX,
+                        )
                     )
                     time.sleep(2)
 

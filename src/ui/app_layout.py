@@ -19,12 +19,16 @@ from src.ui.windows.custom_deck import CustomDeckPanel
 from src.ui.windows.compare import ComparePanel
 from src.ui.windows.download import DownloadWindow
 from src.ui.windows.tier_list_panel import TierListWindow
+from src.i18n import tr
 
 logger = logging.getLogger(__name__)
 
 
 class AppLayoutManager:
     """Builds and manages the main application visual layout and tab architecture."""
+
+    MIN_DASHBOARD_HEIGHT = 320
+    MIN_TABS_HEIGHT = 180
 
     def __init__(self, app_context):
         self.app = app_context
@@ -66,6 +70,7 @@ class AppLayoutManager:
         # Main Splitter
         self.splitter = ttk.PanedWindow(self.main_container, orient=tkinter.VERTICAL)
         self.splitter.pack(fill="both", expand=True)
+        self.splitter.bind("<ButtonRelease-1>", self._on_splitter_release, add="+")
 
         self.top_pane = ttk.Frame(self.splitter)
         self.splitter.add(self.top_pane, weight=4)
@@ -94,7 +99,7 @@ class AppLayoutManager:
 
         self.btn_toggle_tabs = ttk.Button(
             self.tab_controls,
-            text="▼ Hide Tabs",
+            text=tr("tabs.hide"),
             bootstyle="secondary-outline",
             command=self.toggle_tabs,
             cursor="hand2",
@@ -148,12 +153,12 @@ class AppLayoutManager:
             self.notebook, self.config, self.app._refresh_ui_data
         )
 
-        self.notebook.add(self.panel_data, text=" Datasets ")
-        self.notebook.add(self.panel_taken, text=" Card Pool ")
-        self.notebook.add(self.panel_suggest, text=" Deck Builder ")
-        self.notebook.add(self.panel_custom, text=" Custom Deck ")
-        self.notebook.add(self.panel_compare, text=" Comparisons ")
-        self.notebook.add(self.panel_tiers, text=" Tier Lists ")
+        self.notebook.add(self.panel_data, text=f" {tr('tabs.datasets')} ")
+        self.notebook.add(self.panel_taken, text=f" {tr('tabs.card_pool')} ")
+        self.notebook.add(self.panel_suggest, text=f" {tr('tabs.deck_builder')} ")
+        self.notebook.add(self.panel_custom, text=f" {tr('tabs.custom_deck')} ")
+        self.notebook.add(self.panel_compare, text=f" {tr('tabs.comparisons')} ")
+        self.notebook.add(self.panel_tiers, text=f" {tr('tabs.tier_lists')} ")
 
         # Safely trigger dataset UI refreshes if the panel supports it
         self.notebook.bind(
@@ -161,7 +166,7 @@ class AppLayoutManager:
             lambda e: (
                 self.panel_data.refresh()
                 if hasattr(self.panel_data, "refresh")
-                and "Datasets" in self.notebook.tab(self.notebook.select(), "text")
+                and self.notebook.select() == str(self.panel_data)
                 else None
             ),
         )
@@ -169,16 +174,62 @@ class AppLayoutManager:
     def toggle_tabs(self):
         if self.tabs_visible:
             self.splitter.forget(self.bottom_pane)
-            self.btn_toggle_tabs.config(text="▲ Show Tabs")
+            self.btn_toggle_tabs.config(text=tr("tabs.show"))
             self.tabs_visible = False
         else:
             self.splitter.add(self.bottom_pane, weight=2)
-            self.btn_toggle_tabs.config(text="▼ Hide Tabs")
+            self.btn_toggle_tabs.config(text=tr("tabs.hide"))
             self.tabs_visible = True
 
     def ensure_tabs_visible(self):
         if not self.tabs_visible:
             self.toggle_tabs()
+
+    def _on_splitter_release(self, _event=None):
+        """Keep the dashboard readable after the user drags the divider."""
+        self.root.after_idle(self._clamp_vertical_sash)
+
+    def _clamp_vertical_sash(self, requested_position=None):
+        """Clamp the main divider while adapting to short/scaled windows.
+
+        A previously saved or manually dragged sash could leave the dashboard only
+        a few pixels tall. The recap notebook then remained alive, but its labels
+        were painted underneath the tab and labelframe borders. Reserve enough room
+        for both panes whenever the window size allows it.
+        """
+        if not self.tabs_visible or not self.splitter:
+            return None
+
+        try:
+            current_position = (
+                self.splitter.sashpos(0)
+                if requested_position is None
+                else int(requested_position)
+            )
+            available_height = self.splitter.winfo_height()
+
+            # During initial layout Tk may still report a 1 px placeholder. In
+            # that case preserve the requested value and let the later callback
+            # perform the size-aware clamp.
+            if available_height <= 1:
+                self.splitter.sashpos(0, current_position)
+                return current_position
+
+            min_tabs = Theme.scaled_val(self.MIN_TABS_HEIGHT)
+            desired_dashboard = Theme.scaled_val(self.MIN_DASHBOARD_HEIGHT)
+
+            # On a genuinely short window, share the available room instead of
+            # forcing the lower pane completely off-screen.
+            max_dashboard = max(1, available_height - min_tabs)
+            min_dashboard = min(desired_dashboard, max_dashboard)
+            safe_position = max(
+                min_dashboard, min(current_position, max_dashboard)
+            )
+
+            self.splitter.sashpos(0, safe_position)
+            return safe_position
+        except (tkinter.TclError, TypeError, ValueError):
+            return None
 
     def update_session_info(self, event_name, draft_id, start_time):
         """Displays technical metadata silently in the footer."""
@@ -202,7 +253,7 @@ class AppLayoutManager:
                 try:
                     sash_pos = self.config.settings.paned_window_sash
                     if sash_pos > Theme.scaled_val(50) and self.tabs_visible:
-                        self.splitter.sashpos(0, sash_pos)
+                        self._clamp_vertical_sash(sash_pos)
 
                     dash_sash = getattr(
                         self.config.settings, "dashboard_sash", Theme.scaled_val(800)

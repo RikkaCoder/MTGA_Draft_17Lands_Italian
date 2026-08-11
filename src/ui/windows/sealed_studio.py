@@ -30,6 +30,7 @@ from src.ui.components import (
 from src.card_logic import copy_deck, get_deck_metrics
 from src.sealed_logic import SealedSession, generate_sealed_shells
 from src.utils import open_file
+from src.i18n import card_name as localized_card_name, color_label, tr, type_list_label
 
 
 class SealedStudioWindow(tb.Toplevel):
@@ -47,7 +48,7 @@ class SealedStudioWindow(tb.Toplevel):
         self.configuration = configuration
         self.metrics = metrics
 
-        self.title("Sealed Studio - MTGA Draft Tool")
+        self.title(tr("sealed.title"))
 
         width = Theme.scaled_val(1400)
         height = Theme.scaled_val(900)
@@ -84,7 +85,13 @@ class SealedStudioWindow(tb.Toplevel):
             "M": tkinter.IntVar(value=1),
         }
 
-        self.pool_sort_var = tkinter.StringVar(value="Color")
+        self._sort_labels = {
+            tr("sealed.sort_color"): "Color",
+            "CMC": "CMC",
+            tr("sealed.sort_rarity"): "Rarity",
+            tr("sealed.sort_type"): "Type",
+        }
+        self.pool_sort_var = tkinter.StringVar(value=tr("sealed.sort_color"))
         self.deck_sort_var = tkinter.StringVar(value="CMC")
 
         if "sealed_pool_table" not in self.configuration.settings.column_configs:
@@ -121,42 +128,42 @@ class SealedStudioWindow(tb.Toplevel):
 
         tb.Label(
             header,
-            text="SEALED STUDIO",
+            text=tr("sealed.heading"),
             font=Theme.scaled_font(18, "bold"),
             bootstyle="primary",
         ).pack(side="left")
 
         tb.Button(
             header,
-            text="🤖 Auto-Generate Shells",
+            text=tr("sealed.generate_shells"),
             bootstyle="success",
             command=self._on_auto_generate,
         ).pack(side="left", padx=Theme.scaled_val(20))
 
         tb.Button(
             header,
-            text="📥 Import Deck",
+            text=tr("sealed.import_deck"),
             bootstyle="info",
             command=self._import_deck_from_clipboard,
         ).pack(side="left", padx=Theme.scaled_val(10))
 
         tb.Button(
             header,
-            text="📋 Copy MTGA Format",
+            text=tr("sealed.copy_mtga"),
             bootstyle="info-outline",
             command=self._export_active_deck,
         ).pack(side="right", padx=Theme.scaled_val(5))
 
         tb.Button(
             header,
-            text="🌐 Export to Sealeddeck.tech",
+            text=tr("sealed.export_web"),
             bootstyle="warning-outline",
             command=self._export_to_sealeddeck_tech,
         ).pack(side="right", padx=Theme.scaled_val(5))
 
         self.btn_view_toggle = tb.Button(
             header,
-            text="👁️ Switch to List View",
+            text=tr("sealed.switch_list"),
             bootstyle="secondary-outline",
             command=self._toggle_view,
         )
@@ -196,11 +203,11 @@ class SealedStudioWindow(tb.Toplevel):
                 pass
 
         if self.view_mode == "list":
-            self.btn_view_toggle.config(text="👁️ Switch to Visual View")
+            self.btn_view_toggle.config(text=tr("sealed.switch_visual"))
             self.container.add(self.list_pane_left, weight=1)
             self.container.add(self.list_pane_right, weight=1)
         else:
-            self.btn_view_toggle.config(text="👁️ Switch to List View")
+            self.btn_view_toggle.config(text=tr("sealed.switch_list"))
             self.container.add(self.visual_pane, weight=1)
 
     def _build_list_view(self):
@@ -209,18 +216,18 @@ class SealedStudioWindow(tb.Toplevel):
         pool_header.pack(fill="x", pady=Theme.scaled_val((0, 5)))
 
         self.lbl_pool_title_list = tb.Label(
-            pool_header, text="MASTER POOL (0)", font=Theme.scaled_font(12, "bold")
+            pool_header, text=tr("deck.master_pool", count=0), font=Theme.scaled_font(12, "bold")
         )
         self.lbl_pool_title_list.pack(side="left")
 
         filter_frame = tb.Frame(pool_header)
         filter_frame.pack(side="right")
 
-        tb.Label(filter_frame, text="Sort:").pack(side="left", padx=2)
+        tb.Label(filter_frame, text=tr("common.sort")).pack(side="left", padx=2)
         sort_cb = tb.Combobox(
             filter_frame,
             textvariable=self.pool_sort_var,
-            values=["Color", "CMC", "Rarity", "Type"],
+            values=list(self._sort_labels),
             state="readonly",
             width=7,
         )
@@ -230,19 +237,19 @@ class SealedStudioWindow(tb.Toplevel):
 
         tb.Checkbutton(
             filter_frame,
-            text="Creatures",
+            text=tr("deck.creatures"),
             variable=self.filter_vars["creatures"],
             command=self._refresh_data,
         ).pack(side="left", padx=2)
         tb.Checkbutton(
             filter_frame,
-            text="Spells",
+            text=tr("deck.spells"),
             variable=self.filter_vars["spells"],
             command=self._refresh_data,
         ).pack(side="left", padx=2)
         tb.Checkbutton(
             filter_frame,
-            text="Lands",
+            text=tr("deck.lands"),
             variable=self.filter_vars["lands"],
             command=self._refresh_data,
         ).pack(side="left", padx=2)
@@ -312,7 +319,7 @@ class SealedStudioWindow(tb.Toplevel):
 
         self.lbl_deck_title_list = tb.Label(
             deck_controls,
-            text="ACTIVE DECK (0)",
+            text=tr("deck.active_deck", count=0),
             font=Theme.scaled_font(12, "bold"),
             bootstyle="success",
         )
@@ -320,31 +327,31 @@ class SealedStudioWindow(tb.Toplevel):
 
         tb.Button(
             deck_controls,
-            text="Auto-Lands",
+            text=tr("deck.auto_lands"),
             bootstyle="warning",
             command=self._apply_auto_lands,
         ).pack(side="left", padx=Theme.scaled_val(10))
 
         tb.Button(
             deck_controls,
-            text="Clear",
+            text=tr("common.clear"),
             bootstyle="danger-outline",
             command=self._clear_deck,
         ).pack(side="left", padx=5)
         tb.Button(
             deck_controls,
-            text="Add All",
+            text=tr("common.add_all"),
             bootstyle="secondary-outline",
             command=self._add_all_to_deck,
         ).pack(side="left", padx=5)
 
         sort_frame = tb.Frame(deck_controls)
         sort_frame.pack(side="left", padx=Theme.scaled_val(15))
-        tb.Label(sort_frame, text="Sort:").pack(side="left", padx=2)
+        tb.Label(sort_frame, text=tr("common.sort")).pack(side="left", padx=2)
         deck_sort_cb = tb.Combobox(
             sort_frame,
             textvariable=self.deck_sort_var,
-            values=["Color", "CMC", "Rarity", "Type"],
+            values=list(self._sort_labels),
             state="readonly",
             width=7,
         )
@@ -431,7 +438,7 @@ class SealedStudioWindow(tb.Toplevel):
 
         self.lbl_deck_title_vis = tb.Label(
             deck_controls,
-            text="ACTIVE DECK (0)",
+            text=tr("deck.active_deck", count=0),
             font=Theme.scaled_font(12, "bold"),
             bootstyle="success",
         )
@@ -439,31 +446,31 @@ class SealedStudioWindow(tb.Toplevel):
 
         tb.Button(
             deck_controls,
-            text="Auto-Lands",
+            text=tr("deck.auto_lands"),
             bootstyle="warning",
             command=self._apply_auto_lands,
         ).pack(side="left", padx=Theme.scaled_val(10))
 
         tb.Button(
             deck_controls,
-            text="Clear",
+            text=tr("common.clear"),
             bootstyle="danger-outline",
             command=self._clear_deck,
         ).pack(side="left", padx=5)
         tb.Button(
             deck_controls,
-            text="Add All",
+            text=tr("common.add_all"),
             bootstyle="secondary-outline",
             command=self._add_all_to_deck,
         ).pack(side="left", padx=5)
 
         sort_frame = tb.Frame(deck_controls)
         sort_frame.pack(side="left", padx=Theme.scaled_val(15))
-        tb.Label(sort_frame, text="Sort:").pack(side="left", padx=2)
+        tb.Label(sort_frame, text=tr("common.sort")).pack(side="left", padx=2)
         deck_sort_cb = tb.Combobox(
             sort_frame,
             textvariable=self.deck_sort_var,
-            values=["Color", "CMC", "Rarity", "Type"],
+            values=list(self._sort_labels),
             state="readonly",
             width=7,
         )
@@ -515,18 +522,18 @@ class SealedStudioWindow(tb.Toplevel):
         pool_header.pack(fill="x", pady=Theme.scaled_val(5))
 
         self.lbl_pool_title_vis = tb.Label(
-            pool_header, text="MASTER POOL (0)", font=Theme.scaled_font(12, "bold")
+            pool_header, text=tr("deck.master_pool", count=0), font=Theme.scaled_font(12, "bold")
         )
         self.lbl_pool_title_vis.pack(side="left")
 
         filter_frame = tb.Frame(pool_header)
         filter_frame.pack(side="right")
 
-        tb.Label(filter_frame, text="Sort:").pack(side="left", padx=2)
+        tb.Label(filter_frame, text=tr("common.sort")).pack(side="left", padx=2)
         sort_cb = tb.Combobox(
             filter_frame,
             textvariable=self.pool_sort_var,
-            values=["Color", "CMC", "Rarity", "Type"],
+            values=list(self._sort_labels),
             state="readonly",
             width=7,
         )
@@ -536,19 +543,19 @@ class SealedStudioWindow(tb.Toplevel):
 
         tb.Checkbutton(
             filter_frame,
-            text="Creatures",
+            text=tr("deck.creatures"),
             variable=self.filter_vars["creatures"],
             command=self._refresh_data,
         ).pack(side="left", padx=2)
         tb.Checkbutton(
             filter_frame,
-            text="Spells",
+            text=tr("deck.spells"),
             variable=self.filter_vars["spells"],
             command=self._refresh_data,
         ).pack(side="left", padx=2)
         tb.Checkbutton(
             filter_frame,
-            text="Lands",
+            text=tr("deck.lands"),
             variable=self.filter_vars["lands"],
             command=self._refresh_data,
         ).pack(side="left", padx=2)
@@ -620,7 +627,7 @@ class SealedStudioWindow(tb.Toplevel):
 
     def _build_hud(self, parent):
         self.hud_frame = tb.Labelframe(
-            parent, text=" DECK ANALYTICS ", padding=Theme.scaled_val(10)
+            parent, text=f" {tr('sealed.analytics')} ", padding=Theme.scaled_val(10)
         )
         self.hud_frame.pack(fill="x", side="bottom", pady=Theme.scaled_val((10, 0)))
         self.hud_frame.columnconfigure(0, weight=1)
@@ -631,13 +638,13 @@ class SealedStudioWindow(tb.Toplevel):
         comp_frame.grid(row=0, column=0, sticky="nw")
         tb.Label(
             comp_frame,
-            text="COMPOSITION",
+            text=tr("sealed.composition"),
             font=Theme.scaled_font(10, "bold"),
             bootstyle="primary",
         ).pack(anchor="w")
         self.lbl_comp_stats = tb.Label(
             comp_frame,
-            text="Creatures: 0\nSpells: 0\nLands: 0",
+            text=tr("sealed.composition_empty"),
             font=Theme.scaled_font(9),
         )
         self.lbl_comp_stats.pack(anchor="w", pady=Theme.scaled_val(5))
@@ -646,7 +653,7 @@ class SealedStudioWindow(tb.Toplevel):
         curve_frame.grid(row=0, column=1, sticky="nsew")
         tb.Label(
             curve_frame,
-            text="MANA CURVE",
+            text=tr("dashboard.mana_curve"),
             font=Theme.scaled_font(10, "bold"),
             bootstyle="primary",
         ).pack(anchor="w")
@@ -660,7 +667,7 @@ class SealedStudioWindow(tb.Toplevel):
         color_frame.grid(row=0, column=2, sticky="nsew")
         tb.Label(
             color_frame,
-            text="BALANCE",
+            text=tr("sealed.balance"),
             font=Theme.scaled_font(10, "bold"),
             bootstyle="primary",
         ).pack(anchor="w")
@@ -673,7 +680,7 @@ class SealedStudioWindow(tb.Toplevel):
 
     def _create_new_tab(self):
         name = simpledialog.askstring(
-            "New Deck", "Enter a name for the new deck variant:", parent=self
+            tr("sealed.new_deck"), tr("sealed.new_deck_prompt"), parent=self
         )
         if name:
             self.session.create_variant(name)
@@ -682,8 +689,8 @@ class SealedStudioWindow(tb.Toplevel):
     def _rename_tab(self):
         if self.session.active_variant_name:
             new_name = simpledialog.askstring(
-                "Rename Deck",
-                "Enter new name:",
+                tr("sealed.rename_deck"),
+                tr("sealed.rename_prompt"),
                 initialvalue=self.session.active_variant_name,
                 parent=self,
             )
@@ -695,15 +702,15 @@ class SealedStudioWindow(tb.Toplevel):
     def _delete_tab(self):
         if len(self.session.variants) > 1:
             if messagebox.askyesno(
-                "Delete",
-                f"Are you sure you want to delete '{self.session.active_variant_name}'?",
+                tr("common.delete"),
+                tr("sealed.delete_prompt", name=self.session.active_variant_name),
                 parent=self,
             ):
                 self.session.delete_variant(self.session.active_variant_name)
                 self._refresh_tabs()
         else:
             messagebox.showwarning(
-                "Cannot Delete", "You must have at least one deck variant.", parent=self
+                tr("sealed.cannot_delete"), tr("sealed.last_variant"), parent=self
             )
 
     def _refresh_tabs(self):
@@ -746,11 +753,11 @@ class SealedStudioWindow(tb.Toplevel):
 
     def _on_auto_generate(self):
         self.lbl_deck_title_list.config(
-            text="GENERATING SHELLS...", bootstyle="warning"
+            text=tr("sealed.generating"), bootstyle="warning"
         )
         if hasattr(self, "lbl_deck_title_vis"):
             self.lbl_deck_title_vis.config(
-                text="GENERATING SHELLS...", bootstyle="warning"
+                text=tr("sealed.generating"), bootstyle="warning"
             )
         self.update_idletasks()
 
@@ -781,17 +788,17 @@ class SealedStudioWindow(tb.Toplevel):
         pool_count = sum(c.get("count", 1) for c in sideboard)
         deck_count = sum(c.get("count", 1) for c in main_deck)
 
-        self.lbl_pool_title_list.config(text=f"MASTER POOL ({pool_count})")
+        self.lbl_pool_title_list.config(text=tr("deck.master_pool", count=pool_count))
         if hasattr(self, "lbl_pool_title_vis"):
-            self.lbl_pool_title_vis.config(text=f"MASTER POOL ({pool_count})")
+            self.lbl_pool_title_vis.config(text=tr("deck.master_pool", count=pool_count))
 
         deck_style = "success" if deck_count == 40 else "warning"
         self.lbl_deck_title_list.config(
-            text=f"ACTIVE DECK ({deck_count})", bootstyle=deck_style
+            text=tr("deck.active_deck", count=deck_count), bootstyle=deck_style
         )
         if hasattr(self, "lbl_deck_title_vis"):
             self.lbl_deck_title_vis.config(
-                text=f"ACTIVE DECK ({deck_count})", bootstyle=deck_style
+                text=tr("deck.active_deck", count=deck_count), bootstyle=deck_style
             )
 
         show_c, show_s, show_l = (
@@ -859,13 +866,13 @@ class SealedStudioWindow(tb.Toplevel):
             row_values = []
             for field in manager.active_fields:
                 if field == "name":
-                    row_values.append(card.get("name", "Unknown"))
+                    row_values.append(localized_card_name(card))
                 elif field == "count":
                     row_values.append(str(card.get("count", 1)))
                 elif field == "cmc":
                     row_values.append(str(card.get("cmc", 0)))
                 elif field == "types":
-                    row_values.append(format_types_for_ui(card.get("types", [])))
+                    row_values.append(type_list_label(format_types_for_ui(card.get("types", []))))
                 elif field == "colors":
                     row_values.append("".join(card.get("colors", [])))
                 elif field == "tags":
@@ -915,6 +922,8 @@ class SealedStudioWindow(tb.Toplevel):
         if not cards:
             return
 
+        sort_by = self._sort_labels.get(sort_by, sort_by)
+
         columns = {}
         col_labels = {}
         col_order = []
@@ -925,14 +934,14 @@ class SealedStudioWindow(tb.Toplevel):
                 columns.setdefault(col_id, []).append(c)
             col_order = [0, 1, 2, 3, 4, 5, 6, 7]
             col_labels = {
-                0: "White",
-                1: "Blue",
-                2: "Black",
-                3: "Red",
-                4: "Green",
-                5: "Multicolor",
-                6: "Colorless",
-                7: "Lands",
+                0: color_label("W"),
+                1: color_label("U"),
+                2: color_label("B"),
+                3: color_label("R"),
+                4: color_label("G"),
+                5: color_label("M"),
+                6: color_label("C"),
+                7: tr("deck.lands"),
             }
         elif sort_by == "CMC":
             for c in cards:
@@ -943,14 +952,14 @@ class SealedStudioWindow(tb.Toplevel):
                     columns.setdefault(cmc, []).append(c)
             col_order = [0, 1, 2, 3, 4, 5, 6, 7]
             col_labels = {
-                0: "0 CMC",
-                1: "1 CMC",
-                2: "2 CMC",
-                3: "3 CMC",
-                4: "4 CMC",
-                5: "5 CMC",
-                6: "6+ CMC",
-                7: "Lands",
+                0: tr("deck.cmc_row", cmc=0),
+                1: tr("deck.cmc_row", cmc=1),
+                2: tr("deck.cmc_row", cmc=2),
+                3: tr("deck.cmc_row", cmc=3),
+                4: tr("deck.cmc_row", cmc=4),
+                5: tr("deck.cmc_row", cmc=5),
+                6: tr("deck.cmc_six"),
+                7: tr("deck.lands"),
             }
         elif sort_by == "Rarity":
             for c in cards:
@@ -968,10 +977,10 @@ class SealedStudioWindow(tb.Toplevel):
                     columns.setdefault(0, []).append(c)
             col_order = [0, 1, 2, 4]
             col_labels = {
-                0: "Common",
-                1: "Uncommon",
-                2: "Rare/Mythic",
-                4: "Basic Lands",
+                0: tr("tooltip.common"),
+                1: tr("tooltip.uncommon"),
+                2: tr("sealed.rare_mythic"),
+                4: tr("sealed.basic_lands"),
             }
         elif sort_by == "Type":
             for c in cards:
@@ -990,12 +999,12 @@ class SealedStudioWindow(tb.Toplevel):
                     columns.setdefault(5, []).append(c)
             col_order = [0, 1, 2, 3, 4, 5]
             col_labels = {
-                0: "Creatures",
-                1: "Instants/Sorceries",
-                2: "Artifacts/Enchantments",
-                3: "Planeswalkers/Battles",
-                4: "Lands",
-                5: "Other",
+                0: tr("deck.creatures"),
+                1: tr("sealed.instants_sorceries"),
+                2: tr("sealed.artifacts_enchantments"),
+                3: tr("sealed.planeswalkers_battles"),
+                4: tr("deck.lands"),
+                5: tr("pool_view.other"),
             }
 
         scale = Theme.current_scale
@@ -1050,7 +1059,7 @@ class SealedStudioWindow(tb.Toplevel):
                     placeholder_text_id = canvas.create_text(
                         current_x + 5,
                         current_y + 5,
-                        text=card.get("name", ""),
+                        text=localized_card_name(card),
                         fill=Theme.TEXT_MAIN,
                         font=Theme.scaled_font(8),
                         width=CARD_W - 10,
@@ -1199,7 +1208,7 @@ class SealedStudioWindow(tb.Toplevel):
                         def apply_err():
                             if canvas.winfo_exists():
                                 canvas.itemconfigure(
-                                    text_id, text=f"{name}\n(Image Unavailable)"
+                                    text_id, text=f"{localized_card_name(name)}\n{tr('errors.image_unavailable')}"
                                 )
 
                         self.after(0, apply_err)
@@ -1211,7 +1220,13 @@ class SealedStudioWindow(tb.Toplevel):
     def _update_hud(self, main_deck):
         metrics = get_deck_metrics(main_deck)
         self.lbl_comp_stats.config(
-            text=f"Creatures: {metrics.creature_count}\nSpells: {metrics.noncreature_count}\nLands: {metrics.total_cards - metrics.creature_count - metrics.noncreature_count}\nAvg CMC: {metrics.cmc_average:.2f}"
+            text=tr(
+                "sealed.composition_values",
+                creatures=metrics.creature_count,
+                spells=metrics.noncreature_count,
+                lands=metrics.total_cards - metrics.creature_count - metrics.noncreature_count,
+                cmc=f"{metrics.cmc_average:.2f}",
+            )
         )
         self.curve_plot.update_curve(metrics.distribution_all)
 
@@ -1537,13 +1552,13 @@ class SealedStudioWindow(tb.Toplevel):
 
             if not deck_cards:
                 messagebox.showwarning(
-                    "Import Failed",
-                    "No valid MTGA format cards found in clipboard.",
+                    tr("sealed.import_failed_title"),
+                    tr("sealed.no_clipboard_cards"),
                     parent=self,
                 )
                 return
 
-            self.session.create_variant("Imported Deck")
+            self.session.create_variant(tr("sealed.imported_deck"))
             self.session.variants[
                 self.session.active_variant_name
             ].main_deck_counts.clear()
@@ -1563,18 +1578,17 @@ class SealedStudioWindow(tb.Toplevel):
             self._refresh_data()
 
             if missing_cards:
-                msg = "Deck imported, but the following cards were skipped because they are not in your pool (or you exceeded your owned quantity limits):\n\n"
-                msg += ", ".join(missing_cards[:10])
+                msg = tr("sealed.skipped_cards", cards=", ".join(missing_cards[:10]))
                 if len(missing_cards) > 10:
-                    msg += f" ...and {len(missing_cards) - 10} more."
-                messagebox.showwarning("Partial Import", msg, parent=self)
+                    msg += tr("sealed.more_cards", count=len(missing_cards) - 10)
+                messagebox.showwarning(tr("sealed.partial_import"), msg, parent=self)
             else:
                 messagebox.showinfo(
-                    "Success", "Deck imported successfully!", parent=self
+                    tr("common.success"), tr("sealed.import_success"), parent=self
                 )
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to import deck: {e}", parent=self)
+            messagebox.showerror(tr("common.error"), tr("sealed.import_failed", error=e), parent=self)
 
     def _export_active_deck(self):
         main_deck, sideboard = self.session.get_active_deck_lists()
@@ -1582,7 +1596,7 @@ class SealedStudioWindow(tb.Toplevel):
         self.clipboard_clear()
         self.clipboard_append(export_text)
         messagebox.showinfo(
-            "Export Successful", "Deck copied to clipboard in MTGA format!", parent=self
+            tr("sealed.export_success_title"), tr("sealed.export_success"), parent=self
         )
 
     def _export_to_sealeddeck_tech(self):
@@ -1594,7 +1608,7 @@ class SealedStudioWindow(tb.Toplevel):
             if self.view_mode == "visual"
             else self.lbl_deck_title_list
         )
-        lbl.config(text="EXPORTING TO BROWSER...", bootstyle="warning")
+        lbl.config(text=tr("sealed.exporting"), bootstyle="warning")
         self.update_idletasks()
 
         import threading
@@ -1621,8 +1635,8 @@ class SealedStudioWindow(tb.Toplevel):
                     self.clipboard_clear()
                     self.clipboard_append(mtga_payload)
                     messagebox.showwarning(
-                        "API Error",
-                        "Could not reach Sealeddeck.tech automatically.\n\nYour deck has been copied to the clipboard. You can paste it manually at sealeddeck.tech.",
+                        tr("sealed.api_error"),
+                        tr("sealed.api_error_message"),
                         parent=self,
                     )
 

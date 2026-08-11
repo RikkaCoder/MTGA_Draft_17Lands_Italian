@@ -5,6 +5,7 @@ import requests
 import logging
 from src import constants
 from src.configuration import write_configuration
+from src.i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +41,12 @@ class DatasetUpdater:
                     report_data = report_resp.json()
                     if report_data.get("pipeline_run", {}).get("status") == "FAILED":
                         progress_callback(
-                            "⚠️ Server sync failed today. Using cached data."
+                            tr("loading.server_sync_failed")
                         )
             except Exception as health_e:
                 logger.debug(f"Failed to fetch health report (non-fatal): {health_e}")
 
-            progress_callback("Checking for official dataset updates...")
+            progress_callback(tr("loading.checking_dataset_updates"))
             resp = requests.get(constants.REMOTE_MANIFEST_URL, timeout=5)
             resp.raise_for_status()
             remote_manifest = resp.json()
@@ -69,7 +70,7 @@ class DatasetUpdater:
                 file_missing = not os.path.exists(local_filepath)
 
                 if file_missing or local_hash != remote_hash:
-                    progress_callback(f"Downloading {key}...")
+                    progress_callback(tr("loading.downloading_dataset", dataset=key))
 
                     file_url = constants.REMOTE_DATASET_BASE_URL + remote_filename
                     gz_resp = requests.get(file_url, timeout=15)
@@ -92,8 +93,8 @@ class DatasetUpdater:
             self.save_local_manifest(local_manifest)
 
             if updates_made:
-                progress_callback("Datasets updated successfully.")
+                progress_callback(tr("loading.datasets_updated"))
 
         except Exception as e:
             logger.error(f"Failed to sync datasets: {e}")
-            progress_callback("Skipped dataset sync (Network Error).")
+            progress_callback(tr("loading.dataset_sync_skipped"))

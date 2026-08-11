@@ -18,6 +18,7 @@ from src.ui.components import (
     CardPile,
 )
 from src.card_logic import format_win_rate
+from src.i18n import card_name as localized_card_name, tr
 
 
 class TakenCardsPanel(ttk.Frame):
@@ -107,7 +108,7 @@ class TakenCardsPanel(ttk.Frame):
 
         self.lbl_filter = ttk.Label(
             type_grp,
-            text="FILTER:",
+            text=tr("pool_view.filter"),
             font=Theme.scaled_font(8, "bold"),
             bootstyle="primary",
         )
@@ -116,10 +117,10 @@ class TakenCardsPanel(ttk.Frame):
 
         self.vars = {}
         for lbl, key in [
-            ("Creatures", "creature"),
-            ("Lands", "land"),
-            ("Spells", "spell"),
-            ("Other", "other"),
+            (tr("deck.creatures"), "creature"),
+            (tr("deck.lands"), "land"),
+            (tr("deck.spells"), "spell"),
+            (tr("pool_view.other"), "other"),
         ]:
             var = tkinter.IntVar(value=1)
             self.vars[key] = var
@@ -133,14 +134,14 @@ class TakenCardsPanel(ttk.Frame):
 
         self.btn_view = ttk.Button(
             btn_frame,
-            text="Switch to Visual View",
+            text=tr("pool_view.visual_view"),
             command=self._toggle_view,
             bootstyle="info-outline",
         )
         self.btn_view.pack(side="left", padx=Theme.scaled_val(5))
 
         self.btn_export = ttk.Button(
-            btn_frame, text="Export Pool", command=self._copy_to_clipboard
+            btn_frame, text=tr("pool_view.export"), command=self._copy_to_clipboard
         )
         self.btn_export.pack(side="left", padx=Theme.scaled_val(5))
 
@@ -167,13 +168,13 @@ class TakenCardsPanel(ttk.Frame):
     def _toggle_view(self):
         if self.view_mode == "list":
             self.view_mode = "visual"
-            self.btn_view.config(text="Switch to List View")
+            self.btn_view.config(text=tr("pool_view.list_view"))
             self.table_manager.pack_forget()
             self.visual_scroller.pack(fill="both", expand=True)
             self._render_visual_view()
         else:
             self.view_mode = "list"
-            self.btn_view.config(text="Switch to Visual View")
+            self.btn_view.config(text=tr("pool_view.visual_view"))
             self.visual_scroller.pack_forget()
             self.table_manager.pack(fill="both", expand=True)
             self._update_table_view()
@@ -197,7 +198,7 @@ class TakenCardsPanel(ttk.Frame):
             row_values = []
             for field in self.table_manager.active_fields:
                 if field == "name":
-                    row_values.append(card.get("name", "Unknown"))
+                    row_values.append(localized_card_name(card))
                 elif field == "count":
                     row_values.append(card.get("count", 1))
                 elif field == "colors":
@@ -328,10 +329,10 @@ class TakenCardsPanel(ttk.Frame):
         self.clipboard_clear()
         self.clipboard_append(copy_deck(self.current_display_list, None))
 
-        self.btn_export.config(text="Copied! ✔", bootstyle="success")
+        self.btn_export.config(text=tr("common.copied"), bootstyle="success")
         self.after(
             2000,
-            lambda: self.btn_export.config(text="Export Pool", bootstyle="primary"),
+            lambda: self.btn_export.config(text=tr("pool_view.export"), bootstyle="primary"),
         )
 
     def _on_selection(self, event):

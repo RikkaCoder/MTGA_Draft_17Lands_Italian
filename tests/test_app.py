@@ -38,7 +38,7 @@ class TestDraftApp:
         with patch("src.ui.app_layout.AppLayoutManager.build"):
             app = DraftApp(root, mock_scanner, config)
             assert app._initialized is True
-            assert app.vars["status_text"].get() == "Ready"
+            assert app.vars["status_text"].get() == "Pronto"
 
     def test_overlay_toggling_logic(self, root, mock_scanner):
         """Verify the Mini Mode window is correctly spawned and destroyed."""

@@ -15,6 +15,7 @@ from src import constants
 from src.ui.styles import Theme
 from src.utils import retrieve_local_set_list
 from src.configuration import write_configuration
+from src.i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class TopBarControls(ttk.Frame):
 
         ttk.Button(
             row1,
-            text="Mini Mode",
+            text=tr("top_bar.mini_mode"),
             bootstyle="info-outline",
             command=self.app._enable_overlay,
             width=-10,
@@ -71,7 +72,7 @@ class TopBarControls(ttk.Frame):
 
         self.btn_reload = ttk.Button(
             row2,
-            text="Reload",
+            text=tr("top_bar.reload"),
             command=self.app._force_reload,
             width=7,
             bootstyle="secondary-outline",
@@ -137,7 +138,7 @@ class TopBarControls(ttk.Frame):
         if self.app.configuration.settings.deck_filter == constants.FILTER_OPTION_AUTO:
             active_color = colors[0] if colors else "All Decks"
             if active_color == "All Decks":
-                self.lbl_auto_detect.config(text="(Auto: Detecting...)")
+                self.lbl_auto_detect.config(text=tr("status.auto_detecting"))
             else:
                 color_ratings = (
                     self.app.orchestrator.scanner.set_data.get_color_ratings()
@@ -153,7 +154,9 @@ class TopBarControls(ttk.Frame):
                     == constants.DECK_FILTER_FORMAT_NAMES
                     else active_color
                 )
-                self.lbl_auto_detect.config(text=f"(Auto: {display_name}{wr_str})")
+                self.lbl_auto_detect.config(
+                    text=tr("status.auto_value", value=f"{display_name}{wr_str}")
+                )
         else:
             self.lbl_auto_detect.config(text="")
 
@@ -178,7 +181,7 @@ class TopBarControls(ttk.Frame):
                         set_display = name
                         break
 
-            live_label = f"🔴 Live: {set_display}"
+            live_label = tr("status.live", set_name=set_display)
             self.history_files[live_label] = live_path
             options.append(live_label)
 
@@ -210,7 +213,7 @@ class TopBarControls(ttk.Frame):
 
         self.combo_history["values"] = options
         current_selection = self.app.vars["set_label"].get()
-        if "Missing Dataset" in current_selection:
+        if tr("status.missing_dataset_marker") in current_selection:
             return
 
         current_log = os.path.basename(self.app.orchestrator.scanner.arena_file)
@@ -329,7 +332,9 @@ class TopBarControls(ttk.Frame):
 
             if not available_events:
                 self.dataset_controls_frame.pack(side="right")
-                self.app.vars["set_label"].set(f"{full_set_name} (Missing Dataset)")
+                self.app.vars["set_label"].set(
+                    tr("status.missing_dataset", set_name=full_set_name)
+                )
                 self.om_event["menu"].delete(0, "end")
                 self.om_group["menu"].delete(0, "end")
                 return
@@ -382,17 +387,17 @@ class TopBarControls(ttk.Frame):
         if selection in self.history_files:
             filepath = self.history_files[selection]
             self.combo_history.configure(state="disabled")
-            self.app.vars["status_text"].set("Queuing Draft...")
+            self.app.vars["status_text"].set(tr("status.queuing_draft"))
 
             if hasattr(self.app, "loading_overlay"):
                 title_name = selection.replace("📂 ", "").replace("🔴 ", "")
-                self.app.loading_overlay.show(f"Loading: {title_name}")
-                self.app.loading_overlay.update_status("Queuing Draft...")
+                self.app.loading_overlay.show(tr("status.loading_named", name=title_name))
+                self.app.loading_overlay.update_status(tr("status.queuing_draft"))
 
             self.app.root.update_idletasks()
             self.app.orchestrator.set_file_and_scan(filepath)
 
-            if self.app.tabs_visible and "🔴 Live" not in selection:
+            if self.app.tabs_visible and not selection.startswith("🔴"):
                 self.app.notebook.select(self.app.panel_suggest)
 
     def on_event_change(self):
@@ -435,11 +440,13 @@ class TopBarControls(ttk.Frame):
 
             if os.path.basename(path) != current_loaded:
                 if hasattr(self.app, "loading_overlay"):
-                    self.app.loading_overlay.show(f"Evaluating {evt} ({grp})")
-                    self.app.loading_overlay.update_status("Processing dataset...")
+                    self.app.loading_overlay.show(
+                        tr("status.evaluating", event=evt, group=grp)
+                    )
+                    self.app.loading_overlay.update_status(tr("status.processing_dataset"))
                 self.app.root.update_idletasks()
 
-                self.app.vars["status_text"].set("Loading Dataset...")
+                self.app.vars["status_text"].set(tr("status.loading_dataset"))
                 try:
                     self.app.orchestrator.scanner.retrieve_set_data(path)
                     self.app.configuration.card_data.latest_dataset = os.path.basename(
@@ -452,7 +459,7 @@ class TopBarControls(ttk.Frame):
                 except Exception as e:
                     logger.error(f"Dataset load error: {e}")
 
-                self.app.vars["status_text"].set("Ready")
+                self.app.vars["status_text"].set(tr("status.ready"))
                 self.update_data_sources()
                 self.update_deck_filter_options()
                 self.app.orchestrator.request_math_update()

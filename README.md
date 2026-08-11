@@ -11,6 +11,7 @@ Magic: The Gathering Arena draft tool that utilizes 17Lands data.
 - [Security, Verification & macOS Gatekeeper](#security-verification--macos-gatekeeper)
 - [Run Steps: Standalone App (Windows / macOS / Linux)](#run-steps-standalone-app-windows--macos--linux)
 - [Run Steps: Python (Windows / macOS / Linux)](#run-steps-python-windows--macos--linux)
+- [Supported Languages](#supported-languages)
 - [Marquee Features](#marquee-features)
 - [UI Navigation & Tabs](#ui-navigation--tabs)
 - [Settings & Preferences](#settings--preferences)
@@ -19,6 +20,17 @@ Magic: The Gathering Arena draft tool that utilizes 17Lands data.
 - [Signal Detection (Beta)](#signal-detection-beta)
 - [Troubleshooting](#troubleshooting)
 - [Development & Documentation](#development--documentation)
+
+---
+
+## Supported Languages
+
+- Italiano (default)
+- English
+
+The language can be selected from `File -> Preferences -> Language`. See the
+[Italian localization documentation](docs/localization/LOCALIZZAZIONE_ITALIANA.md)
+for implementation details and known limitations.
 
 ---
 

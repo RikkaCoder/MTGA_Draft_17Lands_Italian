@@ -274,4 +274,8 @@ class TestLogPipelineIntegration:
 
         assert len(rows) > 0
         missing_names = [str(tree.item(r)["values"][0]) for r in rows]
-        assert any("Wrangler" in name or "90584" in name for name in missing_names)
+        canonical_names = [str(tree.item(r)["text"]) for r in rows]
+        assert any(
+            "Wrangler" in name or "90584" in name
+            for name in missing_names + canonical_names
+        )

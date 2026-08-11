@@ -9,6 +9,7 @@ from src import constants
 from src.ui.styles import Theme
 from src.ui.components import DynamicTreeviewManager, AutocompleteEntry, CardToolTip
 from src.card_logic import format_win_rate, row_color_tag
+from src.i18n import card_name as localized_card_name, tr
 
 
 class ComparePanel(ttk.Frame):
@@ -27,7 +28,7 @@ class ComparePanel(ttk.Frame):
     def refresh(self):
         card_map = self.draft.set_data.get_card_ratings() or {}
         self.entry_card.set_completion_list(
-            [v.get("name", "") for v in card_map.values()]
+            [localized_card_name(v) for v in card_map.values()]
         )
         self._update_content()
 
@@ -37,7 +38,7 @@ class ComparePanel(ttk.Frame):
 
         ttk.Label(
             bar,
-            text="SEARCH:",
+            text=tr("compare.search"),
             font=Theme.scaled_font(8, "bold"),
             bootstyle="primary",
         ).pack(side="left", padx=Theme.scaled_val(5))
@@ -47,10 +48,10 @@ class ComparePanel(ttk.Frame):
         )
         self.entry_card.bind("<Return>", self._add_card)
 
-        ttk.Button(bar, text="Add", width=8, command=self._add_card).pack(
+        ttk.Button(bar, text=tr("compare.add"), width=10, command=self._add_card).pack(
             side="left", padx=Theme.scaled_val(2)
         )
-        ttk.Button(bar, text="Clear", command=self._clear_list).pack(
+        ttk.Button(bar, text=tr("common.clear"), command=self._clear_list).pack(
             side="right", padx=Theme.scaled_val(5)
         )
 
@@ -68,7 +69,7 @@ class ComparePanel(ttk.Frame):
             return
         card_map = self.draft.set_data.get_card_ratings() or {}
         found = next(
-            (d for d in card_map.values() if d.get("name", "").lower() == typed), None
+            (d for d in card_map.values() if localized_card_name(d).lower() == typed), None
         )
         if found and found not in self.compare_list:
             self.compare_list.append(found)
@@ -120,7 +121,7 @@ class ComparePanel(ttk.Frame):
 
             for field in self.table_manager.active_fields:
                 if field == "name":
-                    row_values.append(card.get("name", ""))
+                    row_values.append(localized_card_name(card))
                 elif field == "colors":
                     row_values.append("".join(card.get("colors", [])))
                 elif field == "tags":
@@ -162,7 +163,7 @@ class ComparePanel(ttk.Frame):
             t.insert(
                 "",
                 "end",
-                text=card.get("name", ""),
+                text=localized_card_name(card),
                 values=row_values,
                 tags=(tag,),
             )
@@ -185,7 +186,7 @@ class ComparePanel(ttk.Frame):
 
         if card_name:
             card = next(
-                (c for c in self.compare_list if c.get("name") == card_name), None
+                (c for c in self.compare_list if localized_card_name(c) == card_name), None
             )
         else:
             idx = self.table.index(sel[0])

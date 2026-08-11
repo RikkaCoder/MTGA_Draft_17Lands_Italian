@@ -6,6 +6,7 @@ and external routing (Compare, Scryfall, Clipboard) for MTG cards.
 
 import tkinter
 import urllib.parse
+from src.i18n import card_name as localized_card_name, tr
 from src import constants
 from src.ui.styles import Theme
 from src.ui.components import CardToolTip
@@ -125,16 +126,16 @@ class CardInteractionManager:
 
         menu = tkinter.Menu(self.app.root, tearoff=0)
         menu.add_command(
-            label=f"🔍 Compare '{card_name}'",
+            label=tr("card_actions.compare", card=localized_card_name(card_name)),
             command=lambda: self.send_to_compare(found),
         )
         menu.add_command(
-            label="📋 Copy Name",
+            label=tr("card_actions.copy_name"),
             command=lambda: self.copy_text_to_clipboard(card_name),
         )
         menu.add_separator()
         menu.add_command(
-            label="🌐 View on Scryfall", command=lambda: self.open_scryfall(card_name)
+            label=tr("card_actions.scryfall"), command=lambda: self.open_scryfall(card_name)
         )
 
         menu.post(event.x_root, event.y_root)

@@ -9,6 +9,7 @@ from ttkbootstrap.constants import *
 from src import constants
 from src.card_logic import row_color_tag, stack_cards, get_deck_metrics
 from src.ui.styles import Theme
+from src.i18n import card_name as localized_card_name, tr
 from src.ui.components import (
     DynamicTreeviewManager,
     CardToolTip,
@@ -23,7 +24,7 @@ from src.card_logic import format_win_rate
 
 class CompactOverlay(tb.Toplevel):
     def __init__(self, parent, app_context, configuration, on_restore):
-        super().__init__(title="Mini Mode", topmost=True)
+        super().__init__(title=tr("overlay.title"), topmost=True)
         self.app_context = app_context
         self.orchestrator = app_context.orchestrator
         self.configuration = configuration
@@ -122,7 +123,7 @@ class CompactOverlay(tb.Toplevel):
 
         self.lbl_status = tb.Label(
             header,
-            text="Waiting...",
+            text=tr("status.waiting"),
             font=Theme.scaled_font(10, "bold"),
             bootstyle="inverse-secondary",
         )
@@ -159,10 +160,10 @@ class CompactOverlay(tb.Toplevel):
         self.tab_stats = tb.Frame(self.notebook, padding=Theme.scaled_val(10))
         self.tab_pool = tb.Frame(self.notebook, padding=Theme.scaled_val(2))
 
-        self.notebook.add(self.tab_pack, text=" Pack ")
-        self.notebook.add(self.tab_advisor, text=" Advisor ")
-        self.notebook.add(self.tab_stats, text=" Stats ")
-        self.notebook.add(self.tab_pool, text=" Pool ")
+        self.notebook.add(self.tab_pack, text=f" {tr('common.pack')} ")
+        self.notebook.add(self.tab_advisor, text=f" {tr('common.advisor')} ")
+        self.notebook.add(self.tab_stats, text=f" {tr('common.stats')} ")
+        self.notebook.add(self.tab_pool, text=f" {tr('common.pool')} ")
 
         # 1. Pack Tab (Dynamic Grid)
         self.tab_pack.columnconfigure(0, weight=1)
@@ -184,7 +185,7 @@ class CompactOverlay(tb.Toplevel):
         self.missing_frame = tb.Frame(self.tab_pack)
         tb.Label(
             self.missing_frame,
-            text="SEEN CARDS (WHEEL)",
+            text=tr("overlay.seen_cards"),
             foreground=None,
             bootstyle="primary",
         ).pack(anchor="w", pady=Theme.scaled_val((4, 2)), padx=Theme.scaled_val(2))
@@ -221,7 +222,7 @@ class CompactOverlay(tb.Toplevel):
         # 4. Stats Tab
         tb.Label(
             self.tab_stats,
-            text="OPEN LANES",
+            text=tr("overlay.open_lanes"),
             font=Theme.scaled_font(10, "bold"),
             bootstyle="primary",
         ).pack(anchor="w", pady=(0, Theme.scaled_val(5)))
@@ -230,7 +231,7 @@ class CompactOverlay(tb.Toplevel):
 
         tb.Label(
             self.tab_stats,
-            text="MANA CURVE",
+            text=tr("overlay.mana_curve"),
             font=Theme.scaled_font(10, "bold"),
             bootstyle="primary",
         ).pack(anchor="w", pady=(0, Theme.scaled_val(5)))
@@ -242,7 +243,7 @@ class CompactOverlay(tb.Toplevel):
 
         tb.Label(
             self.tab_stats,
-            text="POOL BALANCE",
+            text=tr("overlay.pool_balance"),
             font=Theme.scaled_font(10, "bold"),
             bootstyle="primary",
         ).pack(anchor="w", pady=(0, Theme.scaled_val(5)))
@@ -279,7 +280,7 @@ class CompactOverlay(tb.Toplevel):
                 label=label,
                 command=lambda l=label: self.app_context.vars["deck_filter"].set(l),
             )
-        menu.add_cascade(label="Colors (Filter)", menu=filter_menu)
+        menu.add_cascade(label=tr("overlay.colors_filter"), menu=filter_menu)
 
         event_menu = tkinter.Menu(menu, tearoff=0)
         for e in self.app_context.current_set_data_map.keys():
@@ -287,7 +288,7 @@ class CompactOverlay(tb.Toplevel):
                 label=e,
                 command=lambda ev=e: self.app_context.vars["selected_event"].set(ev),
             )
-        menu.add_cascade(label="Event Type", menu=event_menu)
+        menu.add_cascade(label=tr("overlay.event_type"), menu=event_menu)
 
         group_menu = tkinter.Menu(menu, tearoff=0)
         evt = self.app_context.vars["selected_event"].get()
@@ -299,10 +300,10 @@ class CompactOverlay(tb.Toplevel):
                         g
                     ),
                 )
-        menu.add_cascade(label="User Group", menu=group_menu)
+        menu.add_cascade(label=tr("overlay.user_group"), menu=group_menu)
         menu.add_separator()
         menu.add_command(
-            label="Preferences...", command=self.app_context._open_settings
+            label=tr("menu.preferences"), command=self.app_context._open_settings
         )
 
         menu.post(
@@ -347,14 +348,14 @@ class CompactOverlay(tb.Toplevel):
                     and active_color in constants.COLOR_NAMES_DICT
                 ):
                     display_name = constants.COLOR_NAMES_DICT[active_color]
-                filt = f"Auto ({display_name}{wr_str})"
+                filt = f"{tr('common.auto')} ({display_name}{wr_str})"
 
         # Graceful fallback if no data is loaded
         if not evt:
             _, evt = (
                 self.app_context.orchestrator.scanner.retrieve_current_limited_event()
             )
-            grp = "No Data"
+            grp = tr("common.not_available")
 
         self.lbl_info.config(text=f"{evt} ({grp}) | {filt}")
 
@@ -459,14 +460,14 @@ class CompactOverlay(tb.Toplevel):
                     ):
                         is_picked = True
 
-                display_name = name
+                display_name = localized_card_name(card)
                 if rec:
                     if rec.is_elite:
-                        display_name = f"⭐ {name}"
+                        display_name = f"⭐ {localized_card_name(card)}"
                         if not self.configuration.settings.card_colors_enabled:
                             row_tag = "elite_bomb"
                     elif rec.archetype_fit == "High":
-                        display_name = f"[+] {name}"
+                        display_name = f"[+] {localized_card_name(card)}"
                         if not self.configuration.settings.card_colors_enabled:
                             row_tag = "high_fit"
 
@@ -529,6 +530,7 @@ class CompactOverlay(tb.Toplevel):
                 processed_rows.append(
                     {
                         "card_name": name,
+                        "display_name": localized_card_name(card),
                         "vals": row_values,
                         "tag": row_tag,
                         "sort_key": sort_val,

@@ -11,6 +11,7 @@ from src import constants
 from src.ui.styles import Theme
 from src.configuration import write_configuration
 from src.ui.windows.practice_dialog import PracticeDialog
+from src.i18n import configure_card_names, tr
 
 
 class AppMenuBar:
@@ -26,41 +27,41 @@ class AppMenuBar:
 
         # --- FILE MENU ---
         file_m = tkinter.Menu(m, tearoff=0)
-        m.add_cascade(label="File", menu=file_m)
+        m.add_cascade(label=tr("common.file"), menu=file_m)
         file_m.add_command(
-            label="Preferences...", command=self.app_context._open_settings
+            label=tr("menu.preferences"), command=self.app_context._open_settings
         )
         file_m.add_separator()
-        file_m.add_command(label="Read Draft Log...", command=self._read_draft_log)
-        file_m.add_command(label="Read Player.log...", command=self._read_player_log)
+        file_m.add_command(label=tr("menu.read_draft_log"), command=self._read_draft_log)
+        file_m.add_command(label=tr("menu.read_player_log"), command=self._read_player_log)
         file_m.add_command(
-            label="Locate MTGA Data Folder...", command=self._locate_mtga_data
+            label=tr("menu.locate_data"), command=self._locate_mtga_data
         )
         file_m.add_separator()
-        file_m.add_command(label="Export Draft (CSV)", command=self._export_csv)
-        file_m.add_command(label="Export Draft (JSON)", command=self._export_json)
+        file_m.add_command(label=tr("menu.export_csv"), command=self._export_csv)
+        file_m.add_command(label=tr("menu.export_json"), command=self._export_json)
         file_m.add_separator()
-        file_m.add_command(label="Exit", command=self.app_context._on_close)
+        file_m.add_command(label=tr("menu.exit"), command=self.app_context._on_close)
 
         # --- TOOLS MENU ---
         tools_m = tkinter.Menu(m, tearoff=0)
-        m.add_cascade(label="Tools", menu=tools_m)
+        m.add_cascade(label=tr("common.tools"), menu=tools_m)
         tools_m.add_command(
-            label="Practice: Generate Random Sealed Pool",
+            label=tr("menu.practice_random"),
             command=lambda: PracticeDialog(
                 self.root, self.app_context, is_import=False
             ),
         )
         tools_m.add_command(
-            label="Practice: Import Sealed Pool from Clipboard",
+            label=tr("menu.practice_import"),
             command=lambda: PracticeDialog(self.root, self.app_context, is_import=True),
         )
 
         # --- THEME MENU ---
         theme_m = tkinter.Menu(m, tearoff=0)
-        m.add_cascade(label="Theme", menu=theme_m)
+        m.add_cascade(label=tr("menu.theme"), menu=theme_m)
         theme_m.add_command(
-            label="System (Native)",
+            label=tr("menu.system_theme"),
             command=lambda: self._update_theme(new_palette="System"),
         )
         theme_m.add_separator()
@@ -69,14 +70,14 @@ class AppMenuBar:
             if name == "System":
                 continue
             theme_m.add_command(
-                label=f"Mana Flair: {name}",
+                label=tr("menu.mana_flair", name=name),
                 command=lambda n=name: self._update_theme(new_palette=n),
             )
 
         custom_m = tkinter.Menu(theme_m, tearoff=0)
-        theme_m.add_cascade(label="Custom Themes (.tcl)", menu=custom_m)
+        theme_m.add_cascade(label=tr("menu.custom_themes"), menu=custom_m)
         custom_m.add_command(
-            label="Browse for .tcl...", command=self._browse_custom_tcl
+            label=tr("menu.browse_theme"), command=self._browse_custom_tcl
         )
 
         for name, path in Theme.discover_custom_themes().items():
@@ -116,20 +117,20 @@ class AppMenuBar:
         f = filedialog.askopenfilename(filetypes=(("Log", "*.log"), ("All", "*.*")))
         if f:
             if hasattr(self.app_context, "loading_overlay"):
-                self.app_context.loading_overlay.show("Loading Draft Log")
-                self.app_context.loading_overlay.update_status("Queuing file...")
+                self.app_context.loading_overlay.show(tr("loading.draft_log"))
+                self.app_context.loading_overlay.update_status(tr("loading.queuing"))
             self.app_context.orchestrator.set_file_and_scan(f)
 
     def _read_player_log(self):
         f = filedialog.askopenfilename(filetypes=(("Log", "*.log"), ("All", "*.*")))
         if f:
             if hasattr(self.app_context, "loading_overlay"):
-                self.app_context.loading_overlay.show("Loading Player.log")
-                self.app_context.loading_overlay.update_status("Queuing file...")
+                self.app_context.loading_overlay.show(tr("loading.player_log"))
+                self.app_context.loading_overlay.update_status(tr("loading.queuing"))
             self.app_context.orchestrator.set_file_and_scan(f)
 
     def _locate_mtga_data(self):
-        folder = filedialog.askdirectory(title="Select MTGA_Data Folder")
+        folder = filedialog.askdirectory(title=tr("menu.select_data_folder"))
         if folder:
             if not folder.endswith("MTGA_Data"):
                 if os.path.exists(os.path.join(folder, "MTGA_Data")):
@@ -138,6 +139,7 @@ class AppMenuBar:
             if os.path.exists(os.path.join(folder, "Downloads", "Raw")):
                 self.config.settings.database_location = folder
                 write_configuration(self.config)
+                configure_card_names(folder)
 
                 if (
                     hasattr(self.app_context, "orchestrator")
@@ -150,13 +152,13 @@ class AppMenuBar:
                     self.app_context._refresh_ui_data()
 
                 messagebox.showinfo(
-                    "Success",
-                    f"MTGA Data Folder successfully set to:\n{folder}\n\nYou can now download datasets!",
+                    tr("common.success"),
+                    tr("data_folder.success", folder=folder),
                 )
             else:
                 messagebox.showerror(
-                    "Error",
-                    "Could not find 'Downloads/Raw' in the selected folder.\n\nPlease select the valid MTGA_Data folder.",
+                    tr("common.error"),
+                    tr("data_folder.invalid"),
                 )
 
     def _export_csv(self):
@@ -174,7 +176,7 @@ class AppMenuBar:
         if f:
             with f:
                 f.write(data)
-            messagebox.showinfo("Success", "Export Complete.")
+            messagebox.showinfo(tr("common.success"), tr("menu.export_complete"))
 
     def _export_json(self):
         h = self.app_context.orchestrator.scanner.retrieve_draft_history()
@@ -191,4 +193,4 @@ class AppMenuBar:
         if f:
             with f:
                 f.write(data)
-            messagebox.showinfo("Success", "Export Complete.")
+            messagebox.showinfo(tr("common.success"), tr("menu.export_complete"))

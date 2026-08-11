@@ -13,6 +13,7 @@ from src.file_extractor import FileExtractor
 from src.utils import retrieve_local_set_list, read_local_manifest
 from src.ui.components import DynamicTreeviewManager, AutoScrollbar
 from src.ui.styles import Theme
+from src.i18n import tr
 
 
 @dataclass
@@ -149,7 +150,7 @@ class DownloadWindow(ttk.Frame):
         )
         self.vars["set"] = tkinter.StringVar(value=default_val)
 
-        ttk.Label(form, text="SET:").grid(
+        ttk.Label(form, text=tr("download.set")).grid(
             row=0, column=0, sticky="e", padx=Theme.scaled_val(5)
         )
 
@@ -176,7 +177,7 @@ class DownloadWindow(ttk.Frame):
         # --- END DYNAMIC SET SORTING ---
 
         self.vars["event"] = tkinter.StringVar(value="PremierDraft")
-        ttk.Label(form, text="EVENT:").grid(
+        ttk.Label(form, text=tr("download.event")).grid(
             row=0, column=2, sticky="e", padx=Theme.scaled_val(5)
         )
         self.om_event = ttk.OptionMenu(
@@ -188,7 +189,7 @@ class DownloadWindow(ttk.Frame):
         self.om_event.grid(row=0, column=3, sticky="ew", pady=Theme.scaled_val(2))
 
         self.vars["group"] = tkinter.StringVar(value="All")
-        ttk.Label(form, text="USERS:").grid(
+        ttk.Label(form, text=tr("download.users")).grid(
             row=1, column=0, sticky="e", padx=Theme.scaled_val(5)
         )
         ttk.OptionMenu(
@@ -196,7 +197,7 @@ class DownloadWindow(ttk.Frame):
         ).grid(row=1, column=1, sticky="ew", pady=Theme.scaled_val(2))
 
         self.vars["threshold"] = tkinter.StringVar(value="500")
-        ttk.Label(form, text="MIN GAMES:").grid(
+        ttk.Label(form, text=tr("download.min_games")).grid(
             row=1, column=2, sticky="e", padx=Theme.scaled_val(5)
         )
         ttk.Entry(form, textvariable=self.vars["threshold"]).grid(
@@ -212,7 +213,7 @@ class DownloadWindow(ttk.Frame):
         self.vars["period"] = tkinter.StringVar(
             value=constants.TIME_PERIOD_DEFAULT_LABEL
         )
-        ttk.Label(form, text="TIME PERIOD:").grid(
+        ttk.Label(form, text=tr("download.period")).grid(
             row=2, column=0, sticky="e", padx=Theme.scaled_val(5)
         )
         ttk.OptionMenu(
@@ -223,7 +224,7 @@ class DownloadWindow(ttk.Frame):
         ).grid(row=2, column=1, sticky="ew", pady=Theme.scaled_val(2))
 
         self.btn_dl = ttk.Button(
-            form, text="Download Selected Dataset", command=self._manual_download
+            form, text=tr("download.download"), command=self._manual_download
         )
         self.btn_dl.grid(
             row=3, column=0, columnspan=4, pady=Theme.scaled_val((10, 0)), sticky="ew"
@@ -231,7 +232,7 @@ class DownloadWindow(ttk.Frame):
 
         self.btn_clear = ttk.Button(
             form,
-            text="Clear Set History",
+            text=tr("download.clear_history"),
             command=self._clear_set_history,
             bootstyle="secondary",
         )
@@ -242,7 +243,7 @@ class DownloadWindow(ttk.Frame):
         self.progress = ttk.Progressbar(container, mode="determinate")
         self.progress.pack(fill="x", pady=Theme.scaled_val(5))
 
-        self.vars["status"] = tkinter.StringVar(value="Ready")
+        self.vars["status"] = tkinter.StringVar(value=tr("status.ready"))
         ttk.Label(
             container, textvariable=self.vars["status"], bootstyle="secondary"
         ).pack()
@@ -282,10 +283,10 @@ class DownloadWindow(ttk.Frame):
         self.table.selection_set(row_id)
 
         menu = tkinter.Menu(self, tearoff=0)
-        menu.add_command(label="✅ Set as Active Dataset", command=self._on_set_active)
+        menu.add_command(label=tr("download.set_active"), command=self._on_set_active)
         menu.add_separator()
         menu.add_command(
-            label="🗑️ Delete Dataset", command=lambda: self._delete_dataset(row_id)
+            label=tr("download.delete"), command=lambda: self._delete_dataset(row_id)
         )
 
         menu.post(event.x_root, event.y_root)
@@ -296,14 +297,14 @@ class DownloadWindow(ttk.Frame):
 
         if self.configuration.card_data.latest_dataset == filename:
             messagebox.showwarning(
-                "Cannot Delete",
-                "You cannot delete the currently active dataset. Please double-click a different dataset to switch to it first.",
+                tr("download.cannot_delete"),
+                tr("download.active_delete_error"),
             )
             return
 
         if messagebox.askyesno(
-            "Confirm Delete",
-            f"Are you sure you want to permanently delete this dataset?\n\n{filename}",
+            tr("download.confirm_delete"),
+            f"{tr('download.confirm_delete_message')}\n\n{filename}",
         ):
             try:
                 os.remove(filepath)
@@ -312,7 +313,7 @@ class DownloadWindow(ttk.Frame):
                 invalidate_local_set_cache()
                 self._update_table()
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to delete file:\n{e}")
+                messagebox.showerror(tr("common.error"), tr("download.delete_failed", error=e))
 
     def enter(self, args: DatasetArgs = None):
         if args:
@@ -362,9 +363,8 @@ class DownloadWindow(ttk.Frame):
         the next launch's splash screen. Useful when accumulated old sets slow
         loading or after a data-format change."""
         if not messagebox.askyesno(
-            "Clear Set History",
-            "Delete all downloaded datasets?\n\nThe latest 17Lands data will be "
-            "re-downloaded automatically the next time you start the app.",
+            tr("download.clear_history"),
+            tr("download.confirm_clear"),
         ):
             return
 
@@ -380,9 +380,8 @@ class DownloadWindow(ttk.Frame):
 
         self._update_table()
         messagebox.showinfo(
-            "Set History Cleared",
-            f"Removed {removed} dataset(s). Restart the app to download fresh "
-            "17Lands data.",
+            tr("download.history_cleared"),
+            tr("download.history_cleared_message", count=removed),
         )
 
     def _on_set_change(self, val):
@@ -444,10 +443,10 @@ class DownloadWindow(ttk.Frame):
         try:
             thr_str = self.vars["threshold"].get().strip() or "500"
             if not thr_str.isdigit():
-                raise ValueError("Min Games must be numeric.")
+                raise ValueError(tr("download.numeric_games"))
             threshold = int(thr_str)
         except ValueError as e:
-            messagebox.showerror("Download Error", str(e))
+            messagebox.showerror(tr("download.download_error"), str(e))
             return
 
         # CAPTURE DATA ON MAIN THREAD BEFORE ENTERING WORKER
@@ -503,7 +502,7 @@ class DownloadWindow(ttk.Frame):
                 else:
                     self._safe_error(msg)
             else:
-                self._safe_error("17Lands Connection Failed")
+                self._safe_error(tr("download.connection_failed"))
         except Exception as e:
             self._safe_error(str(e))
 
@@ -538,17 +537,18 @@ class DownloadWindow(ttk.Frame):
         self.progress["value"] = 0
         self._update_table()
 
+        limited = "Min Games" in msg or tr("extract.threshold") in msg
         status_str = (
-            "DOWNLOAD SUCCESSFUL"
-            if "Min Games" not in msg
-            else "DOWNLOADED (LIMITED DATA)"
+            tr("download.success_status")
+            if not limited
+            else tr("download.limited_status")
         )
         self.vars["status"].set(status_str)
 
         # Force UI to fully redraw and settle BEFORE the blocking messagebox appears
         self.update_idletasks()
 
-        messagebox.showinfo("Dataset Download Complete", msg)
+        messagebox.showinfo(tr("download.complete"), msg)
 
         # Defer the main app UI refresh until after the user dismisses the dialog
         if self.on_update_callback:
@@ -557,5 +557,5 @@ class DownloadWindow(ttk.Frame):
     def _handle_error(self, err):
         self.btn_dl.configure(state="normal")
         self.progress["value"] = 0
-        self.vars["status"].set("DOWNLOAD FAILED")
-        messagebox.showerror("Download Error", err)
+        self.vars["status"].set(tr("download.failed_status"))
+        messagebox.showerror(tr("download.download_error"), err)

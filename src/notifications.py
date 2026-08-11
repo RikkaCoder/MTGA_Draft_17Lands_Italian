@@ -18,6 +18,7 @@ from src.constants import (
     LIMITED_TYPE_STRING_DRAFT_QUICK,
     LIMITED_TYPE_STRING_DRAFT_BOT,
 )
+from src.i18n import tr
 
 logger = create_logger()
 
@@ -52,12 +53,13 @@ class Notifications:
         """Displays a prompt allowing users to immediately route to the Dataset window for a missing set."""
         display_name = full_set_name if full_set_name else set_code
 
-        msg = (
-            f"No dataset found for {display_name} ({current_event_type}).\n\n"
-            f"Would you like to automatically download the 17Lands 'All Users' data for this event?"
+        msg = tr(
+            "notifications.missing_prompt",
+            set_name=display_name,
+            event=current_event_type,
         )
 
-        if tkinter.messagebox.askyesno("Missing Dataset", msg):
+        if tkinter.messagebox.askyesno(tr("notifications.missing_dataset"), msg):
             args = DatasetArgs(
                 draft_set=set_code,
                 draft=current_event_type if current_event_type else "PremierDraft",

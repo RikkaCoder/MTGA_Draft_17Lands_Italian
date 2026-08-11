@@ -11,6 +11,7 @@ from src.advisor.schema import Recommendation
 from src.ui.styles import Theme
 from src.constants import TAG_VISUALS
 from src.ui.components import CollapsibleFrame
+from src.i18n import card_name as localized_card_name, tr, translate_generated
 
 
 class AdvisorPanel(tb.Frame):
@@ -35,7 +36,7 @@ class AdvisorPanel(tb.Frame):
         if self.is_collapsible:
             self.collapsible = CollapsibleFrame(
                 self,
-                title="ADVISOR RECOMMENDATIONS",
+                title=tr("advisor.recommendations"),
                 configuration=self.configuration,
                 setting_key="advisor_panel",
             )
@@ -55,7 +56,7 @@ class AdvisorPanel(tb.Frame):
         if not recs:
             tb.Label(
                 self.container,
-                text="Calculating tactical scores...",
+                text=tr("advisor.calculating"),
                 font=Theme.scaled_font(10 if self.mini_mode else 9),
             ).pack(pady=Theme.scaled_val(10), anchor="center")
             return
@@ -130,7 +131,7 @@ class AdvisorPanel(tb.Frame):
             font_weight = "bold" if is_elite else "normal"
             lbl_name = tb.Label(
                 header_frame,
-                text=rec.card_name.upper(),
+                text=localized_card_name(rec.card_name).upper(),
                 font=Theme.scaled_font(name_font_size, font_weight),
                 wraplength=Theme.scaled_val(180 if self.mini_mode else 160),
                 justify="left",
@@ -145,13 +146,13 @@ class AdvisorPanel(tb.Frame):
             # --- Body: Reasoning Description & Tags ---
             reason_text = ""
             if is_elite:
-                reason_text += f"ELITE PICK (+{rec.z_score}σ)"
+                reason_text += tr("advisor.elite_pick", z_score=rec.z_score)
                 if rec.reasoning:
-                    reason_text += f" | {' | '.join(rec.reasoning)}"
+                    reason_text += f" | {' | '.join(map(translate_generated, rec.reasoning))}"
             elif rec.reasoning:
-                reason_text += " | ".join(rec.reasoning)
+                reason_text += " | ".join(map(translate_generated, rec.reasoning))
             else:
-                reason_text += "Tactically superior for your pool"
+                reason_text += tr("advisor.superior")
 
             if rec.tags:
                 tag_strings = [TAG_VISUALS.get(t, t.capitalize()) for t in rec.tags]

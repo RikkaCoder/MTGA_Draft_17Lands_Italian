@@ -8,10 +8,19 @@ import tkinter
 from src.ui.styles import Theme
 from unittest.mock import patch
 from ttkbootstrap.style import StyleBuilderTTK
+from src.i18n import set_locale
 
 
 # Global singleton for Tkinter root
 _shared_root = None
+
+
+@pytest.fixture(autouse=True)
+def preserve_legacy_test_language():
+    """Keep historical UI assertions in English unless a test selects a locale."""
+    set_locale("en_US")
+    yield
+    set_locale("it_IT")
 
 
 @pytest.fixture(autouse=True)

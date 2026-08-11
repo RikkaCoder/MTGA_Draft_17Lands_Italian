@@ -245,9 +245,7 @@ class TestSuggestDeckPanel:
         panel = SuggestDeckPanel(root, mock_draft, Configuration())
 
         with patch.object(panel, "_draw_sample_hand") as mock_draw:
-            panel.notebook.select = MagicMock(return_value="tab3")
-            # notebook.tab(id, "text") returns a string directly in Tkinter
-            panel.notebook.tab = MagicMock(return_value=" SIMULATION & SAMPLE HAND ")
+            panel.notebook.select = MagicMock(return_value=str(panel.hand_tab))
             panel._on_tab_changed(None)
 
             # We assert it was called because the user navigated to the tab

@@ -49,6 +49,7 @@ from src.file_extractor import search_arena_log_locations, retrieve_arena_direct
 from src.ui.app import DraftApp
 from src.ui.windows.splash import SplashWindow
 from src.ui.styles import Theme
+from src.i18n import set_locale, tr
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ def load_data(args, config, progress_callback):
     try:
         # 1. ROBUST LOG SEARCH
         # We prioritize: 1. Manual Flag (-f), 2. System Default (Real Path), 3. Config Fallback
-        progress_callback("Locating Arena Logs...")
+        progress_callback(tr("loading.locating_logs"))
         log_path = search_arena_log_locations(
             args.file,  # Manual override
             config.settings.arena_log_location,  # Stored fallback
@@ -85,7 +86,7 @@ def load_data(args, config, progress_callback):
             write_configuration(config)
 
         # 2. GAME FILE INDEXING
-        progress_callback("Checking Game Files...")
+        progress_callback(tr("loading.checking_files"))
 
         # Keep user's manually set location if it exists and is valid
         db_loc = config.settings.database_location
@@ -106,7 +107,7 @@ def load_data(args, config, progress_callback):
             # that were previously limited to a single day of data, so force a
             # refresh even if auto-sync is off and clear the now-orphaned raw
             # cache (keyed by the retired start_date/end_date scheme).
-            progress_callback("Applying corrected 17Lands data (one-time update)...")
+            progress_callback(tr("loading.migration"))
             try:
                 from src.utils import purge_raw_cache
 
@@ -126,14 +127,14 @@ def load_data(args, config, progress_callback):
             updater = DatasetUpdater(config)
             updater.sync_datasets(progress_callback)
         else:
-            progress_callback("Cloud sync disabled by user...")
+            progress_callback(tr("loading.sync_disabled"))
 
         # 4. METADATA REFRESH
-        progress_callback("Checking 17Lands for New Sets...")
+        progress_callback(tr("loading.checking_sets"))
         limited_sets = LimitedSets().retrieve_limited_sets()
 
         # 5. SCANNER INITIALIZATION
-        progress_callback("Initializing Scanner...")
+        progress_callback(tr("loading.scanner"))
         scanner = ArenaScanner(
             filename=log_path,
             set_list=limited_sets,
@@ -143,11 +144,11 @@ def load_data(args, config, progress_callback):
 
         # 6. DRAFT DISCOVERY (Deep Scan)
         # We scan the logs while the splash is active to prevent the main UI from hanging.
-        progress_callback("Searching for active draft...")
+        progress_callback(tr("loading.searching_draft"))
         if scanner.draft_start_search():
             # Identify the event
             e_set, e_type = scanner.retrieve_current_limited_event()
-            progress_callback(f"Found {e_set} {e_type}...")
+            progress_callback(tr("loading.found_event", set_name=e_set, event=e_type))
 
             # Auto-load the correct dataset for this draft
             sources = scanner.retrieve_data_sources()
@@ -161,12 +162,12 @@ def load_data(args, config, progress_callback):
             scanner.draft_data_search()
             pk, pi = scanner.retrieve_current_pack_and_pick()
             if pk > 0:
-                progress_callback(f"Loading {e_set} - Pack {pk} Pick {pi}...")
+                progress_callback(tr("loading.pack_pick", set_name=e_set, pack=pk, pick=pi))
         else:
             # Fallback 1: Check if we successfully recovered a draft state from a previous session
             e_set, e_type = scanner.retrieve_current_limited_event()
             if e_set:
-                progress_callback(f"Recovered Session: {e_set} {e_type}...")
+                progress_callback(tr("loading.recovered", set_name=e_set, event=e_type))
                 sources = scanner.retrieve_data_sources()
                 for label, path in sources.items():
                     if f"[{e_set.upper()}]" in label.upper():
@@ -178,10 +179,10 @@ def load_data(args, config, progress_callback):
                 scanner.draft_data_search()
                 pk, pi = scanner.retrieve_current_pack_and_pick()
                 if pk > 0:
-                    progress_callback(f"Loading {e_set} - Pack {pk} Pick {pi}...")
+                    progress_callback(tr("loading.pack_pick", set_name=e_set, pack=pk, pick=pi))
             else:
                 # Fallback 2: Look for the most recent log in Logs/ and load it automatically
-                progress_callback("Checking for past drafts...")
+                progress_callback(tr("loading.past_drafts"))
                 past_logs = []
                 if os.path.exists(constants.DRAFT_LOG_FOLDER):
                     for f in os.listdir(constants.DRAFT_LOG_FOLDER):
@@ -193,7 +194,7 @@ def load_data(args, config, progress_callback):
                 if past_logs:
                     past_logs.sort(key=os.path.getmtime, reverse=True)
                     most_recent_log = past_logs[0]
-                    progress_callback("Loading most recent draft...")
+                    progress_callback(tr("loading.recent_draft"))
 
                     scanner.set_arena_file(most_recent_log)
                     if scanner.draft_start_search():
@@ -209,7 +210,7 @@ def load_data(args, config, progress_callback):
                     # Absolute fallback: load the most recently used dataset
                     last_dataset = config.card_data.latest_dataset
                     if last_dataset:
-                        progress_callback(f"Indexing {last_dataset.split('_')[0]}...")
+                        progress_callback(tr("loading.indexing", set_name=last_dataset.split('_')[0]))
                         sources = scanner.retrieve_data_sources()
                         for label, path in sources.items():
                             if os.path.basename(path) == last_dataset:
@@ -256,6 +257,7 @@ def main():
 
     # Load Config
     config, _ = read_configuration()
+    set_locale(config.settings.language)
     root = None
 
     def launch_ui(is_safe_mode=False):

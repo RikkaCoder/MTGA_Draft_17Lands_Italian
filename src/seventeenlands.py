@@ -11,6 +11,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from src.utils import is_cache_stale, normalize_color_string, sanitize_card_name
 from src.constants import BASE_DIR
+from src.i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,14 @@ class Seventeenlands:
                 rem_secs = int(rem_time % 60)
                 eta_str = f"{rem_mins}m {rem_secs}s" if rem_mins > 0 else f"{rem_secs}s"
 
-                msg = f"Downloading '{color}' ({i + 1}/{len(target_colors)}) - {pct}% [ETA: {eta_str}]"
+                msg = tr(
+                    "extract.downloading",
+                    color=color,
+                    current=i + 1,
+                    total=len(target_colors),
+                    percent=pct,
+                    eta=eta_str,
+                )
                 progress_callback(msg, pct)
 
             # Fetch raw data (from cache or network)
@@ -87,7 +95,7 @@ class Seventeenlands:
                 time.sleep(1.5)
 
         if progress_callback:
-            progress_callback("Finalizing Dataset...", 100)
+            progress_callback(tr("extract.finalizing"), 100)
 
         return master_card_map
 

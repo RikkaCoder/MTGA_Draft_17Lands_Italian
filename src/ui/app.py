@@ -13,6 +13,7 @@ from typing import Dict, Optional
 from src import constants
 from src.configuration import write_configuration
 from src.ui.styles import Theme
+from src.i18n import configure_card_names, set_locale, tr
 
 from src.ui.orchestrator import DraftOrchestrator
 from src.notifications import Notifications
@@ -41,6 +42,8 @@ class DraftApp:
     def __init__(self, root: tkinter.Tk, scanner, configuration):
         self.root = root
         self.configuration = configuration
+        set_locale(self.configuration.settings.language)
+        configure_card_names(self.configuration.settings.database_location)
 
         # 1. IMMEDIATE STATE INITIALIZATION
         self.vars: Dict[str, tkinter.Variable] = {}
@@ -102,7 +105,7 @@ class DraftApp:
         )
 
         # 7. FINAL WINDOW PROTOCOL & METADATA
-        self.root.title(f"MTGA Draft Tool v{constants.APPLICATION_VERSION}")
+        self.root.title(tr("app.window_title", version=constants.APPLICATION_VERSION))
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.attributes("-topmost", self.configuration.settings.always_on_top)
 
@@ -204,7 +207,7 @@ class DraftApp:
         self.vars["set_label"] = tkinter.StringVar(value="")
         self.vars["selected_event"] = tkinter.StringVar(value="")
         self.vars["selected_group"] = tkinter.StringVar(value="")
-        self.vars["status_text"] = tkinter.StringVar(value="Ready")
+        self.vars["status_text"] = tkinter.StringVar(value=tr("status.ready"))
 
     def update_session_info(self, event_name, draft_id, start_time):
         self.layout_manager.update_session_info(event_name, draft_id, start_time)
@@ -248,8 +251,16 @@ class DraftApp:
             ):
                 self.orchestrator.scanner.set_data.db_path = s.database_location
                 self.orchestrator.scanner.set_data.unknown_id_cache.clear()
+                configure_card_names(s.database_location)
                 self.orchestrator.request_math_update()
                 self._refresh_ui_data()
+            if key == "language":
+                set_locale(s.language)
+                configure_card_names(s.database_location)
+                self.root.title(
+                    tr("app.window_title", version=constants.APPLICATION_VERSION)
+                )
+                self.vars["status_text"].set(tr("status.ready"))
 
         parent_window = self.overlay_window if self.overlay_window else self.root
         SettingsWindow(parent_window, self.configuration, _on_settings_changed)

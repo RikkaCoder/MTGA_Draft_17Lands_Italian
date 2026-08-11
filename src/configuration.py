@@ -57,6 +57,10 @@ class DeckType(BaseModel):
 class Settings(BaseModel):
     """This class holds UI settings"""
 
+    # Missing in legacy configuration files: Pydantic applies this default
+    # without rewriting or rejecting any existing setting.
+    language: str = "it_IT"
+
     table_width: int = 270
     overlay_geometry: str = "300x600+50+50"
 
@@ -136,6 +140,11 @@ class Settings(BaseModel):
         if value not in allowed_values:
             return cls.model_fields[info.field_name].default
         return value
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value):
+        return value if value in {"it_IT", "en_US"} else "it_IT"
 
 
 class CardLogic(BaseModel):
@@ -248,9 +257,11 @@ def write_configuration(
             try:
                 import tkinter.messagebox
 
+                from src.i18n import tr
+
                 tkinter.messagebox.showerror(
-                    "Settings Save Error",
-                    f"Could not save preferences to {file_location}.\n\nThis is usually caused by an Anti-Virus or OneDrive temporarily locking the file.\n\nError: {error}",
+                    tr("errors.settings_save_title"),
+                    tr("errors.settings_save", path=file_location, error=error),
                 )
             except Exception:
                 pass

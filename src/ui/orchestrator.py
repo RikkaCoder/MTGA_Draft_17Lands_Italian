@@ -1,5 +1,6 @@
 import os
 import logging
+from src.i18n import tr
 import threading
 import time
 import queue
@@ -128,7 +129,7 @@ class DraftOrchestrator(threading.Thread):
 
             if new_file:
                 self.loading = True
-                self.update_queue.put({"status": "Scanning Log..."})
+                self.update_queue.put({"status": tr("status.scanning_log")})
                 try:
                     self.scanner.set_arena_file(new_file)
 
@@ -140,7 +141,7 @@ class DraftOrchestrator(threading.Thread):
                     self.scanner.draft_start_search()
                     self.sync_dataset_to_event()
 
-                    self.update_queue.put({"status": "Parsing Picks..."})
+                    self.update_queue.put({"status": tr("status.parsing_picks")})
                     self.scanner.draft_data_search()
                 except Exception as e:
                     logger.error(f"Error processing file swap: {e}")
@@ -247,7 +248,9 @@ class DraftOrchestrator(threading.Thread):
                         return True
 
                     # Notify UI of heavy operation
-                    self.update_queue.put({"status": f"Loading {s_code} Dataset..."})
+                    self.update_queue.put(
+                        {"status": tr("status.loading_named", name=f"{s_code} Dataset")}
+                    )
 
                     self.scanner.retrieve_set_data(path)
                     self.config.card_data.latest_dataset = os.path.basename(path)

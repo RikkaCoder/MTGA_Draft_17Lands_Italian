@@ -115,3 +115,32 @@ class TestAppLayoutManager:
         # Test handling of missing data
         layout.update_session_info(None, None, None)
         assert layout.lbl_session_info.cget("text") == ""
+
+    @patch("src.ui.app_layout.Theme.scaled_val", side_effect=lambda x: x)
+    def test_vertical_sash_is_clamped_to_keep_dashboard_readable(
+        self, mock_scale, mock_app
+    ):
+        layout = AppLayoutManager(mock_app)
+        layout.build()
+        layout.splitter.winfo_height = MagicMock(return_value=900)
+        layout.splitter.sashpos = MagicMock()
+
+        result = layout._clamp_vertical_sash(100)
+
+        assert result == layout.MIN_DASHBOARD_HEIGHT
+        layout.splitter.sashpos.assert_called_with(
+            0, layout.MIN_DASHBOARD_HEIGHT
+        )
+
+    @patch("src.ui.app_layout.Theme.scaled_val", side_effect=lambda x: x)
+    def test_vertical_sash_reserves_room_for_lower_tabs(self, mock_scale, mock_app):
+        layout = AppLayoutManager(mock_app)
+        layout.build()
+        layout.splitter.winfo_height = MagicMock(return_value=900)
+        layout.splitter.sashpos = MagicMock()
+
+        result = layout._clamp_vertical_sash(850)
+
+        expected = 900 - layout.MIN_TABS_HEIGHT
+        assert result == expected
+        layout.splitter.sashpos.assert_called_with(0, expected)

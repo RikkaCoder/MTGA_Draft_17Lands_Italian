@@ -12,6 +12,7 @@ import json
 from typing import Dict, List
 from src.utils import is_cache_stale
 from src.constants import BASE_DIR
+from src.i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class ScryfallTagger:
                 f"Skipping Scryfall community tags for {set_code} to prevent API abuse."
             )
             if progress_callback:
-                progress_callback("Skipping tags for Cube...", 100)
+                progress_callback(tr("extract.skip_cube_tags"), 100)
             return {}, []
 
         safe_set_code = set_code.lower().replace(" ", "")
@@ -80,7 +81,13 @@ class ScryfallTagger:
             # Update UI with live progress
             if progress_callback:
                 progress_callback(
-                    f"Harvesting Tags: '{tag_name}' ({i + 1}/{total_tags})", 100
+                    tr(
+                        "extract.harvesting_tags",
+                        tag=tag_name,
+                        current=i + 1,
+                        total=total_tags,
+                    ),
+                    100,
                 )
 
             q = f"set:{set_code} ({query_string})"
