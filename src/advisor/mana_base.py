@@ -4,8 +4,13 @@ Frank Karsten mathematically-optimized mana base generation and source analysis.
 """
 
 import itertools
+import logging
 import re
 from src import constants
+from src.advisor.progress import emit_progress
+
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_dynamic_mana_base(spells, non_basic_lands, colors, forced_count=17):
@@ -406,7 +411,13 @@ def select_useful_lands(pool, target_colors, metrics=None):
     return useful_lands
 
 
-def brute_force_mana_base(spells, non_basic_lands, colors, forced_count=17):
+def _brute_force_mana_base_impl(
+    spells,
+    non_basic_lands,
+    colors,
+    forced_count=17,
+    progress_callback=None,
+):
     """
     Finds the absolute optimal mana base by simulating dozens of permutations
     around the mathematical baseline.
@@ -451,11 +462,26 @@ def brute_force_mana_base(spells, non_basic_lands, colors, forced_count=17):
     # 3. Simulate all valid permutations
     from src.advisor.simulator import simulate_deck  # Local import to prevent loops
 
+    permutation_total = len(valid_permutations)
+    logger.info("[Optimizer] Mana permutations: %s", permutation_total)
+    emit_progress(
+        progress_callback,
+        "mana_optimization",
+        0,
+        permutation_total,
+    )
+
     best_score = -9999
     best_perm = valid_permutations[0]
     base_deck = spells + non_basic_lands
 
-    for perm in valid_permutations:
+    for permutation_index, perm in enumerate(valid_permutations, start=1):
+        detail = ", ".join(f"{color}: {count}" for color, count in perm.items())
+        logger.info(
+            "[Optimizer] Mana permutation %s/%s",
+            permutation_index,
+            permutation_total,
+        )
         temp_lands = []
         for c, count in perm.items():
             if count > 0:
@@ -464,7 +490,27 @@ def brute_force_mana_base(spells, non_basic_lands, colors, forced_count=17):
         test_deck = base_deck + temp_lands
 
         # We only need 2000 iterations to accurately sort permutations
-        stats = simulate_deck(test_deck, iterations=2000)
+        if progress_callback is None:
+            stats = simulate_deck(test_deck, iterations=2000)
+        else:
+            stats = simulate_deck(
+                test_deck,
+                iterations=2000,
+                progress_callback=progress_callback,
+                phase="mana_simulation",
+                detail=detail,
+                progress_context={
+                    "configuration_current": permutation_index,
+                    "configuration_total": permutation_total,
+                },
+            )
+        emit_progress(
+            progress_callback,
+            "mana_optimization",
+            permutation_index,
+            permutation_total,
+            detail=detail,
+        )
         if not stats:
             continue
 
@@ -490,3 +536,30 @@ def brute_force_mana_base(spells, non_basic_lands, colors, forced_count=17):
             final_lands.extend(create_basic_lands(c, count))
 
     return final_lands
+
+
+def brute_force_mana_base(
+    spells,
+    non_basic_lands,
+    colors,
+    forced_count=17,
+    progress_callback=None,
+):
+    """Find the optimal mana base and optionally report actual configurations."""
+    try:
+        return _brute_force_mana_base_impl(
+            spells,
+            non_basic_lands,
+            colors,
+            forced_count,
+            progress_callback,
+        )
+    except Exception as exc:
+        logger.exception("[Optimizer] ERROR during mana optimization: %s", exc)
+        emit_progress(
+            progress_callback,
+            "error",
+            detail="mana_optimization",
+            context={"error": str(exc)},
+        )
+        raise

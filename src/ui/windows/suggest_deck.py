@@ -15,6 +15,7 @@ import urllib.parse
 import hashlib
 import os
 import io
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageTk
@@ -23,8 +24,12 @@ from src import constants
 from src.card_logic import copy_deck, get_strict_colors, is_castable, get_functional_cmc
 from src.ui.styles import Theme
 from src.ui.components import DynamicTreeviewManager, CardToolTip, AutoScrollbar
+from src.ui.optimizer_progress import OptimizerProgressView
 from src.utils import bind_scroll
 from src.i18n import card_name as localized_card_name, color_label, optimization_note as localized_optimization_note, tag_label, tr, translate_generated, type_list_label
+
+
+logger = logging.getLogger(__name__)
 
 
 class SuggestDeckPanel(ttk.Frame):
@@ -51,6 +56,8 @@ class SuggestDeckPanel(ttk.Frame):
 
         self.image_executor = ThreadPoolExecutor(max_workers=4)
         self.sim_executor = ThreadPoolExecutor(max_workers=1)
+        self._optimizer_progress = None
+        self._progress_run_id = 0
         self.hand_images = []
         self.hand_frames = []
 
@@ -360,43 +367,93 @@ class SuggestDeckPanel(ttk.Frame):
             # Automatically draw a fresh hand when viewing the tab to ensure it's always responsive
             self._draw_sample_hand()
 
-    def _run_monte_carlo_task(self, deck_list):
-        self.after(0, lambda: self._show_sim_loading())
+    def _start_optimizer_progress(self):
+        self._progress_run_id += 1
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
+        self._optimizer_progress = OptimizerProgressView(self, self.sim_frame)
+        return self._progress_run_id
+
+    def _apply_optimizer_progress(self, run_id, event):
+        if run_id != self._progress_run_id or not self.winfo_exists():
+            return
+        if self._optimizer_progress is None:
+            self._optimizer_progress = OptimizerProgressView(self, self.sim_frame)
+        self._optimizer_progress.update(event)
+
+    def _queue_optimizer_progress(self, run_id, event):
+        event_copy = dict(event)
+        try:
+            self.after(0, lambda: self._apply_optimizer_progress(run_id, event_copy))
+        except (RuntimeError, tkinter.TclError):
+            pass
+
+    def _schedule_optimizer_ui(self, callback):
+        try:
+            self.after(0, callback)
+        except (RuntimeError, tkinter.TclError):
+            pass
+
+    def _finish_optimizer_progress(self, run_id, stats):
+        if run_id != self._progress_run_id or not self.winfo_exists():
+            return
+        elapsed = None
+        if self._optimizer_progress:
+            self._optimizer_progress.complete()
+            elapsed = self._optimizer_progress.elapsed_seconds
+        self._last_progress_elapsed = elapsed
+        self._show_sim_results(stats)
+
+    def _fail_optimizer_progress(self, run_id):
+        if run_id != self._progress_run_id or not self.winfo_exists():
+            return
+        if self._optimizer_progress is None:
+            self._optimizer_progress = OptimizerProgressView(self, self.sim_frame)
+        self._optimizer_progress.fail()
+
+    def _run_monte_carlo_task(self, deck_list, run_id=None):
+        run_id = self._progress_run_id if run_id is None else run_id
         try:
             from src.card_logic import simulate_deck
 
-            stats = simulate_deck(deck_list, iterations=10000)
-            self.after(0, lambda: self._show_sim_results(stats))
-        except Exception as e:
-            self.after(0, lambda e=e: self._show_sim_error(str(e)))
+            stats = simulate_deck(
+                deck_list,
+                iterations=10000,
+                progress_callback=lambda event: self._queue_optimizer_progress(
+                    run_id, event
+                ),
+                phase="final_simulation",
+            )
+            if stats is None:
+                self._schedule_optimizer_ui(lambda: self._show_sim_results(stats))
+            else:
+                self._schedule_optimizer_ui(
+                    lambda: self._finish_optimizer_progress(run_id, stats),
+                )
+        except Exception:
+            logger.exception("[Optimizer] ERROR during Monte Carlo simulation")
+            self._schedule_optimizer_ui(
+                lambda: self._fail_optimizer_progress(run_id)
+            )
 
     def _show_sim_loading(self, msg=None):
         sim_frame = getattr(self, "sim_frame", None)
         if not sim_frame or not sim_frame.winfo_exists():
             return
 
-        for widget in sim_frame.winfo_children():
-            widget.destroy()
-
-        lbl = ttk.Label(
-            sim_frame,
-            text=msg or tr("simulation.running"),
-            font=Theme.scaled_font(10, "italic"),
-            bootstyle="secondary",
-            justify="center",
-        )
-        lbl.is_dynamic_wrap = True
-        lbl.pack(pady=Theme.scaled_val(20))
-
-        progress = ttk.Progressbar(sim_frame, mode="indeterminate")
-        progress.pack(fill="x", padx=Theme.scaled_val(20))
-        progress.start(15)
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
+        self._optimizer_progress = OptimizerProgressView(self, sim_frame)
+        if msg:
+            self._optimizer_progress.phase_label.config(text=msg)
 
     def _show_sim_error(self, error):
         sim_frame = getattr(self, "sim_frame", None)
         if not sim_frame or not sim_frame.winfo_exists():
             return
 
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
         for widget in sim_frame.winfo_children():
             widget.destroy()
         ttk.Label(
@@ -411,6 +468,8 @@ class SuggestDeckPanel(ttk.Frame):
         if not sim_frame or not sim_frame.winfo_exists():
             return
 
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
         for widget in sim_frame.winfo_children():
             widget.destroy()
 
@@ -421,6 +480,21 @@ class SuggestDeckPanel(ttk.Frame):
                 bootstyle="warning",
             ).pack(pady=Theme.scaled_val(20))
             return
+
+        elapsed = getattr(self, "_last_progress_elapsed", None)
+        if elapsed is not None:
+            from src.ui.optimizer_progress import format_duration
+
+            ttk.Label(
+                sim_frame,
+                text=tr(
+                    "optimizer.completed_with_time",
+                    time=format_duration(elapsed),
+                ),
+                font=Theme.scaled_font(10, "bold"),
+                bootstyle="success",
+            ).pack(pady=Theme.scaled_val((0, 8)))
+            self._last_progress_elapsed = None
 
         def _add_stat(label, value, thresholds, reverse=False, is_percent=True):
             frame = ttk.Frame(sim_frame)
@@ -886,6 +960,12 @@ class SuggestDeckPanel(ttk.Frame):
             return
 
         self.is_building = True
+        run_id = self._start_optimizer_progress()
+        self.notebook.select(self.hand_tab)
+        if getattr(self, "app_context", None) and hasattr(
+            self.app_context, "loading_overlay"
+        ):
+            self.app_context.loading_overlay.hide()
         self.var_archetype.set(tr("deck.initializing_builder"))
         self._update_dropdown_options([tr("deck.initializing_builder")])
         self._clear_table()
@@ -903,16 +983,22 @@ class SuggestDeckPanel(ttk.Frame):
             else self.draft.retrieve_current_limited_event()
         )
         dataset_name = self.configuration.card_data.latest_dataset
+        pool_signature = tuple(
+            sorted(
+                f"{card.get('name', '')}:{card.get('count', 1)}"
+                for card in raw_pool
+            )
+        )
 
         def _progress_cb(msg):
-            if not self.winfo_exists():
-                return
+            if "phase" in msg:
+                self._queue_optimizer_progress(run_id, msg)
             if "status" in msg:
                 if not self.suggestions:
                     self.after(
                         0,
-                        lambda: self.var_archetype.set(
-                            translate_generated(msg["status"])
+                        lambda status=msg["status"]: self.var_archetype.set(
+                            translate_generated(status)
                         ),
                     )
                 if getattr(self, "app_context", None) and hasattr(
@@ -920,8 +1006,8 @@ class SuggestDeckPanel(ttk.Frame):
                 ):
                     self.after(
                         0,
-                        lambda: self.app_context.loading_overlay.update_status(
-                            translate_generated(msg["status"])
+                        lambda status=msg["status"]: self.app_context.loading_overlay.update_status(
+                            translate_generated(status)
                         ),
                     )
             elif "variant_label" in msg:
@@ -950,13 +1036,44 @@ class SuggestDeckPanel(ttk.Frame):
                     _progress_cb,
                     dataset_name,
                 )
-                self.after(0, lambda: self._finalize_build(raw_results))
-            except Exception as e:
-                self.after(0, lambda: self._handle_builder_error(str(e)))
+                self._schedule_optimizer_ui(
+                    lambda: self._finalize_build(
+                        raw_results,
+                        run_id,
+                        pool_signature,
+                    ),
+                )
+            except Exception as exc:
+                logger.exception("[Optimizer] ERROR during deck generation")
+                error_text = str(exc)
+                self._schedule_optimizer_ui(
+                    lambda: self._handle_builder_error(error_text, run_id),
+                )
 
         self.sim_executor.submit(_worker)
 
-    def _finalize_build(self, sorted_decks):
+    def _finalize_build(
+        self,
+        sorted_decks,
+        run_id=None,
+        expected_pool_signature=None,
+    ):
+        if run_id is not None and run_id != self._progress_run_id:
+            return
+        if expected_pool_signature is not None:
+            current_pool = self.draft.retrieve_taken_cards() or []
+            current_signature = tuple(
+                sorted(
+                    f"{card.get('name', '')}:{card.get('count', 1)}"
+                    for card in current_pool
+                )
+            )
+            if current_signature != expected_pool_signature:
+                self.is_building = False
+                if self._optimizer_progress:
+                    self._optimizer_progress.cancel("optimizer.pool_changed")
+                self.after(0, self._calculate_suggestions)
+                return
         self.is_building = False
         if getattr(self, "app_context", None) and hasattr(
             self.app_context, "loading_overlay"
@@ -977,11 +1094,19 @@ class SuggestDeckPanel(ttk.Frame):
         dropdown_labels = list(self.suggestions.keys())
         self._update_dropdown_options(dropdown_labels)
 
+        if self._optimizer_progress:
+            self._optimizer_progress.complete(detail=dropdown_labels[0])
+            self._last_progress_elapsed = self._optimizer_progress.elapsed_seconds
+
         # Always snap to the mathematically strongest deck once analysis completes
         self._on_deck_selection_change(dropdown_labels[0])
 
-    def _handle_builder_error(self, error_msg):
+    def _handle_builder_error(self, error_msg, run_id=None):
+        if run_id is not None and run_id != self._progress_run_id:
+            return
         self.is_building = False
+        if self._optimizer_progress:
+            self._optimizer_progress.fail()
         if getattr(self, "app_context", None) and hasattr(
             self.app_context, "loading_overlay"
         ):
@@ -992,9 +1117,7 @@ class SuggestDeckPanel(ttk.Frame):
         self._update_dropdown_options([msg])
         self.var_archetype.set(msg)
         self._clear_table()
-        import logging
-
-        logging.getLogger(__name__).error(f"Suggest Deck Error: {error_msg}")
+        logger.error("[Optimizer] Suggest Deck Error: %s", error_msg)
 
     def _update_dropdown_options(self, options: List[str]):
         menu = self.om_archetype["menu"]

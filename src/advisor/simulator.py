@@ -1,7 +1,12 @@
 import numpy as np
 from numba import njit
+import logging
 import re
 from src.card_logic import get_functional_cmc
+from src.advisor.progress import emit_progress
+
+
+logger = logging.getLogger(__name__)
 
 # Mana Bitmask Mapping
 COLOR_BITS = {"W": 1, "U": 2, "B": 4, "R": 8, "G": 16}
@@ -179,15 +184,79 @@ def _run_fast_monte_carlo(
     )
 
 
-def simulate_deck(deck_list, iterations=10000):
+def simulate_deck(
+    deck_list,
+    iterations=10000,
+    progress_callback=None,
+    *,
+    phase="monte_carlo",
+    detail=None,
+    progress_context=None,
+):
+    """Run the existing simulation, optionally reporting real batched progress.
+
+    The no-callback path deliberately remains a single call to the compiled
+    kernel, preserving the original performance and behavior for every
+    existing caller.
+    """
     arrays = _parse_deck_to_arrays(deck_list)
     if not arrays:
         return None
 
     is_land, is_ramp, is_removal, cmcs, mana_produced, primary_req = arrays
-    results = _run_fast_monte_carlo(
-        is_land, is_ramp, is_removal, cmcs, mana_produced, primary_req, iterations
-    )
+    if progress_callback is None:
+        results = _run_fast_monte_carlo(
+            is_land,
+            is_ramp,
+            is_removal,
+            cmcs,
+            mana_produced,
+            primary_req,
+            iterations,
+        )
+    else:
+        logger.info("[Optimizer] Simulation started: %s iterations", iterations)
+        emit_progress(
+            progress_callback,
+            phase,
+            0,
+            iterations,
+            detail=detail,
+            context=progress_context,
+        )
+
+        # At most 20 worker callbacks per simulation (5% increments). This is
+        # frequent enough for readable progress without flooding Tkinter.
+        batch_size = max(1, (iterations + 19) // 20)
+        completed = 0
+        combined = [0] * 11
+        while completed < iterations:
+            batch_iterations = min(batch_size, iterations - completed)
+            batch_results = _run_fast_monte_carlo(
+                is_land,
+                is_ramp,
+                is_removal,
+                cmcs,
+                mana_produced,
+                primary_req,
+                batch_iterations,
+            )
+            for index, value in enumerate(batch_results):
+                combined[index] += value
+            completed += batch_iterations
+            emit_progress(
+                progress_callback,
+                phase,
+                completed,
+                iterations,
+                detail=detail,
+                context=progress_context,
+            )
+            logger.info(
+                "[Optimizer] Simulation progress: %s/%s", completed, iterations
+            )
+        results = combined
+        logger.info("[Optimizer] Simulation completed: %s iterations", iterations)
 
     return {
         "mulligans": (results[0] / iterations) * 100.0,

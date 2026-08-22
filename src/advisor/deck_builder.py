@@ -6,10 +6,10 @@ AI Deck Suggester and Auto-Optimizer. Generates distinct archetype variants.
 import copy
 import logging
 import re
-import itertools
 from src import constants
 from src.card_logic import get_functional_cmc, stack_cards
 from src.advisor.mana_base import (
+    brute_force_mana_base as _brute_force_mana_base,
     is_castable,
     select_useful_lands,
     calculate_dynamic_mana_base,
@@ -24,6 +24,7 @@ from src.advisor.deck_scorer import (
     estimate_record,
 )
 from src.advisor.simulator import simulate_deck
+from src.advisor.progress import emit_progress
 
 logger = logging.getLogger(__name__)
 GLOBAL_DECK_CACHE = {}
@@ -92,93 +93,40 @@ def get_sideboard(pool, deck_stacked):
     return sideboard
 
 
-def brute_force_mana_base(spells, non_basic_lands, colors, forced_count=17):
-    """
-    Finds the absolute optimal mana base by simulating dozens of permutations
-    around the mathematical baseline.
-    """
-    if forced_count <= 0:
-        return []
-
-    # 1. Get the heuristic baseline
-    baseline_basics = calculate_dynamic_mana_base(
-        spells, non_basic_lands, colors, forced_count
+def brute_force_mana_base(
+    spells,
+    non_basic_lands,
+    colors,
+    forced_count=17,
+    progress_callback=None,
+):
+    """Compatibility entry point for the canonical mana-base optimizer."""
+    return _brute_force_mana_base(
+        spells,
+        non_basic_lands,
+        colors,
+        forced_count=forced_count,
+        progress_callback=progress_callback,
     )
 
-    base_counts = {c: 0 for c in colors}
-    for b in baseline_basics:
-        col = b["colors"][0]
-        if col in base_counts:
-            base_counts[col] += 1
 
-    # 2. Generate Neighborhood Permutations (+/- 2 lands per color)
-    tolerance = 2
-    ranges = []
-
-    # Only test permutations for colors we actually want to cast
-    active_colors = [c for c in colors if base_counts.get(c, 0) > 0]
-    if not active_colors:
-        return baseline_basics
-
-    for c in active_colors:
-        base = base_counts[c]
-        min_val = max(0, base - tolerance)
-        max_val = base + tolerance
-        ranges.append(range(min_val, max_val + 1))
-
-    valid_permutations = []
-    for combo in itertools.product(*ranges):
-        if sum(combo) == forced_count:
-            valid_permutations.append(dict(zip(active_colors, combo)))
-
-    if not valid_permutations:
-        return baseline_basics
-
-    # 3. Simulate all valid permutations
-    best_score = -9999
-    best_perm = valid_permutations[0]
-    base_deck = spells + non_basic_lands
-
-    for perm in valid_permutations:
-        temp_lands = []
-        for c, count in perm.items():
-            if count > 0:
-                temp_lands.extend(create_basic_lands(c, count))
-
-        test_deck = base_deck + temp_lands
-
-        # We only need 2000 iterations to accurately sort permutations
-        stats = simulate_deck(test_deck, iterations=2000)
-        if not stats:
-            continue
-
-        # Fitness Function: Maximize playing on curve, TRIPLE penalty for color screw
-        score = (
-            stats["cast_t2"]
-            + stats["cast_t3"]
-            + stats["cast_t4"]
-            + (stats["curve_out"] * 2.0)
-            - (stats["mulligans"] * 1.5)
-            - (stats["screw_t3"] * 1.5)
-            - (stats["color_screw_t3"] * 3.0)
-        )
-
-        if score > best_score:
-            best_score = score
-            best_perm = perm
-
-    # 4. Return the absolute best one
-    final_lands = []
-    for c, count in best_perm.items():
-        if count > 0:
-            final_lands.extend(create_basic_lands(c, count))
-
-    return final_lands
-
-
-def optimize_deck(base_deck, base_sb, archetype_key, colors):
+def _optimize_deck_impl(
+    base_deck,
+    base_sb,
+    archetype_key,
+    colors,
+    progress_callback=None,
+):
+    logger.info("[Optimizer] Started")
+    emit_progress(progress_callback, "preparing", 0, 1)
     total_cards = sum(c.get("count", 1) for c in base_deck)
     if total_cards != 40:
+        emit_progress(
+            progress_callback,
+            "error",
+            detail="preparing",
+            context={"error": "invalid_deck_size"},
+        )
         return (
             base_deck,
             base_sb,
@@ -371,9 +319,53 @@ def optimize_deck(base_deck, base_sb, archetype_key, colors):
 
     best_score = -9999
     best_perm = permutations[0]
+    permutation_total = len(permutations)
+    overall_total = (permutation_total * 500) + 10000
+    logger.info("[Optimizer] Generated %s deck variants", permutation_total)
+    emit_progress(
+        progress_callback,
+        "deck_variants",
+        0,
+        permutation_total,
+        context={"overall_current": 0, "overall_total": overall_total},
+    )
 
-    for desc, p_deck, p_sb in permutations:
-        stats = simulate_deck(p_deck, iterations=500)
+    for variant_index, (desc, p_deck, p_sb) in enumerate(permutations, start=1):
+        logger.info(
+            "[Optimizer] Testing variant %s/%s: %s",
+            variant_index,
+            permutation_total,
+            desc,
+        )
+        emit_progress(
+            progress_callback,
+            "deck_variants",
+            variant_index - 1,
+            permutation_total,
+            detail=desc,
+            context={
+                "variant_current": variant_index,
+                "variant_total": permutation_total,
+                "overall_current": (variant_index - 1) * 500,
+                "overall_total": overall_total,
+            },
+        )
+        if progress_callback is None:
+            stats = simulate_deck(p_deck, iterations=500)
+        else:
+            stats = simulate_deck(
+                p_deck,
+                iterations=500,
+                progress_callback=progress_callback,
+                phase="variant_simulation",
+                detail=desc,
+                progress_context={
+                    "variant_current": variant_index,
+                    "variant_total": permutation_total,
+                    "overall_offset": (variant_index - 1) * 500,
+                    "overall_total": overall_total,
+                },
+            )
         if not stats:
             continue
         score = (
@@ -389,10 +381,73 @@ def optimize_deck(base_deck, base_sb, archetype_key, colors):
         if score > best_score:
             best_score = score
             best_perm = (desc, p_deck, p_sb)
+        emit_progress(
+            progress_callback,
+            "deck_variants",
+            variant_index,
+            permutation_total,
+            detail=desc,
+            context={
+                "variant_current": variant_index,
+                "variant_total": permutation_total,
+                "overall_current": variant_index * 500,
+                "overall_total": overall_total,
+            },
+        )
 
     final_deck, final_sb = best_perm[1], best_perm[2]
-    final_stats = simulate_deck(final_deck, iterations=10000)
+    logger.info("[Optimizer] Final simulation started: 10000 iterations")
+    if progress_callback is None:
+        final_stats = simulate_deck(final_deck, iterations=10000)
+    else:
+        final_stats = simulate_deck(
+            final_deck,
+            iterations=10000,
+            progress_callback=progress_callback,
+            phase="final_simulation",
+            detail=best_perm[0],
+            progress_context={
+                "overall_offset": permutation_total * 500,
+                "overall_total": overall_total,
+            },
+        )
+    emit_progress(
+        progress_callback,
+        "completed",
+        10000,
+        10000,
+        detail=best_perm[0],
+        context={"overall_current": overall_total, "overall_total": overall_total},
+    )
+    logger.info("[Optimizer] Completed")
     return final_deck, final_sb, final_stats, f"Optimized: {best_perm[0]}"
+
+
+def optimize_deck(
+    base_deck,
+    base_sb,
+    archetype_key,
+    colors,
+    progress_callback=None,
+):
+    """Optimize a 40-card deck with optional structured progress reporting."""
+    try:
+        return _optimize_deck_impl(
+            base_deck,
+            base_sb,
+            archetype_key,
+            colors,
+            progress_callback,
+        )
+    except Exception as exc:
+        logger.exception("[Optimizer] ERROR during deck optimization: %s", exc)
+        emit_progress(
+            progress_callback,
+            "error",
+            detail="deck_optimization",
+            context={"error": str(exc)},
+        )
+        raise
 
 
 def suggest_deck(
@@ -403,6 +458,8 @@ def suggest_deck(
     progress_callback=None,
     dataset_name=None,
 ):
+    logger.info("[Optimizer] Started deck suggestion generation")
+    emit_progress(progress_callback, "preparing", 0, 1)
     sorted_decks = {}
     pool_size = len(taken_cards)
     is_bo3 = "Trad" in event_type
@@ -419,7 +476,16 @@ def suggest_deck(
 
         if cache_key in GLOBAL_DECK_CACHE:
             if progress_callback:
-                progress_callback({"status": "Loaded optimized decks from cache."})
+                progress_callback(
+                    {
+                        "status": "Loaded optimized decks from cache.",
+                        "phase": "cache",
+                        "current": 1,
+                        "total": 1,
+                        "message_key": "optimizer.cache",
+                    }
+                )
+            logger.info("[Optimizer] Loaded deck suggestions from cache")
             return GLOBAL_DECK_CACHE[cache_key]
 
         color_options = identify_top_pairs(taken_cards, metrics)
@@ -427,7 +493,15 @@ def suggest_deck(
         seen_signatures = set()
         simulated_cache = {}  # Cache to prevent random variance on identical decks
 
-        def process_variant(variant_name, deck, sb, colors, arch_key):
+        def process_variant(
+            variant_name,
+            deck,
+            sb,
+            colors,
+            arch_key,
+            variant_index,
+            variant_total,
+        ):
             if not deck:
                 return
             spells = [c for c in deck if "Land" not in c.get("types", [])]
@@ -498,6 +572,23 @@ def suggest_deck(
                     )
 
             opt_deck, opt_sb, opt_note = deck, sb, ""
+            logger.info(
+                "[Optimizer] Testing variant %s/%s: %s",
+                variant_index,
+                variant_total,
+                variant_name,
+            )
+            emit_progress(
+                progress_callback,
+                "deck_variants",
+                variant_index - 1,
+                variant_total,
+                detail=variant_name,
+                context={
+                    "variant_current": variant_index,
+                    "variant_total": variant_total,
+                },
+            )
 
             # Generate a strict string signature of the 40-card deck
             deck_sig = "|".join(
@@ -507,7 +598,20 @@ def suggest_deck(
             if deck_sig in simulated_cache:
                 opt_stats, score, breakdown = simulated_cache[deck_sig]
             else:
-                opt_stats = simulate_deck(opt_deck, iterations=10000)
+                if progress_callback is None:
+                    opt_stats = simulate_deck(opt_deck, iterations=10000)
+                else:
+                    opt_stats = simulate_deck(
+                        opt_deck,
+                        iterations=10000,
+                        progress_callback=progress_callback,
+                        phase="variant_simulation",
+                        detail=variant_name,
+                        progress_context={
+                            "variant_current": variant_index,
+                            "variant_total": variant_total,
+                        },
+                    )
                 score, breakdown = calculate_holistic_score(
                     opt_deck, active_colors, pool_size, metrics
                 )
@@ -566,40 +670,58 @@ def suggest_deck(
                 progress_callback(
                     {"variant_label": full_label, "variant_data": variant_data}
                 )
+            emit_progress(
+                progress_callback,
+                "deck_variants",
+                variant_index,
+                variant_total,
+                detail=variant_name,
+                context={
+                    "variant_current": variant_index,
+                    "variant_total": variant_total,
+                },
+            )
 
+        candidate_variants = []
         for main_colors in color_options:
             arch_key = "".join(sorted(main_colors))
             if progress_callback:
                 progress_callback({"status": f"Analyzing {arch_key} Archetypes..."})
 
             con_deck = build_variant_consistency(taken_cards, main_colors, metrics)
-            process_variant(
-                "Consistent",
-                con_deck,
-                get_sideboard(taken_cards, con_deck),
-                main_colors,
-                arch_key,
+            candidate_variants.append(
+                (
+                    "Consistent",
+                    con_deck,
+                    get_sideboard(taken_cards, con_deck),
+                    main_colors,
+                    arch_key,
+                )
             )
 
             greedy_deck, splash_color = build_variant_greedy(
                 taken_cards, main_colors, metrics
             )
             if greedy_deck:
-                process_variant(
-                    f"Splash {splash_color}",
-                    greedy_deck,
-                    get_sideboard(taken_cards, greedy_deck),
-                    main_colors + [splash_color],
-                    arch_key,
+                candidate_variants.append(
+                    (
+                        f"Splash {splash_color}",
+                        greedy_deck,
+                        get_sideboard(taken_cards, greedy_deck),
+                        main_colors + [splash_color],
+                        arch_key,
+                    )
                 )
 
             tempo_deck = build_variant_curve(taken_cards, main_colors, metrics)
-            process_variant(
-                "Tempo",
-                tempo_deck,
-                get_sideboard(taken_cards, tempo_deck),
-                main_colors,
-                arch_key,
+            candidate_variants.append(
+                (
+                    "Tempo",
+                    tempo_deck,
+                    get_sideboard(taken_cards, tempo_deck),
+                    main_colors,
+                    arch_key,
+                )
             )
 
         if progress_callback:
@@ -609,12 +731,42 @@ def suggest_deck(
             soup_arch_key = (
                 "".join(sorted(soup_colors[:3])) if soup_colors else "All Decks"
             )
+            candidate_variants.append(
+                (
+                    "Good Stuff (Soup)",
+                    soup_deck,
+                    get_sideboard(taken_cards, soup_deck),
+                    soup_colors[:3] if soup_colors else ["All Decks"],
+                    soup_arch_key,
+                )
+            )
+
+        # process_variant only analyzes decks with at least 15 spells. Filtering
+        # the same condition here lets the UI report the exact real total.
+        candidate_variants = [
+            candidate
+            for candidate in candidate_variants
+            if candidate[1]
+            and sum(
+                card.get("count", 1)
+                for card in candidate[1]
+                if "Land" not in card.get("types", [])
+            )
+            >= 15
+        ]
+        variant_total = len(candidate_variants)
+        logger.info("[Optimizer] Generated %s deck variants", variant_total)
+        emit_progress(
+            progress_callback,
+            "deck_variants",
+            0,
+            variant_total,
+        )
+        for variant_index, candidate in enumerate(candidate_variants, start=1):
             process_variant(
-                "Good Stuff (Soup)",
-                soup_deck,
-                get_sideboard(taken_cards, soup_deck),
-                soup_colors[:3] if soup_colors else ["All Decks"],
-                soup_arch_key,
+                *candidate,
+                variant_index=variant_index,
+                variant_total=variant_total,
             )
 
         # Incomplete (land-padded) variants are only worth showing when there
@@ -721,9 +873,23 @@ def suggest_deck(
             sorted_decks[label] = data
 
         GLOBAL_DECK_CACHE[cache_key] = sorted_decks
+        emit_progress(
+            progress_callback,
+            "completed",
+            variant_total,
+            variant_total,
+            detail=final_list[0][0] if final_list else None,
+        )
+        logger.info("[Optimizer] Completed deck suggestion generation")
 
     except Exception as e:
-        logger.error(f"Deck builder failure: {e}", exc_info=True)
+        logger.exception("[Optimizer] ERROR during deck suggestion generation: %s", e)
+        emit_progress(
+            progress_callback,
+            "error",
+            detail="deck_variants",
+            context={"error": str(e)},
+        )
         return {}
 
     return sorted_decks

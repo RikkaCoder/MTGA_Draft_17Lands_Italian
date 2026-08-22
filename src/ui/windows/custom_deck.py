@@ -14,6 +14,7 @@ import urllib.parse
 import hashlib
 import os
 import io
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageTk
@@ -30,8 +31,12 @@ from src.card_logic import (
 )
 from src.ui.styles import Theme
 from src.ui.components import DynamicTreeviewManager, CardToolTip, AutoScrollbar
+from src.ui.optimizer_progress import OptimizerProgressView
 from src.utils import bind_scroll
 from src.i18n import card_name as localized_card_name, color_label, optimization_note as localized_optimization_note, tag_label, tr, translate_generated, type_list_label
+
+
+logger = logging.getLogger(__name__)
 
 
 class CustomDeckPanel(ttk.Frame):
@@ -47,6 +52,8 @@ class CustomDeckPanel(ttk.Frame):
 
         self.image_executor = ThreadPoolExecutor(max_workers=4)
         self.sim_executor = ThreadPoolExecutor(max_workers=1)
+        self._optimizer_progress = None
+        self._progress_run_id = 0
         self.hand_images = []
         self.hand_frames = []
 
@@ -435,37 +442,136 @@ class CustomDeckPanel(ttk.Frame):
             self._draw_sample_hand()
 
     # --- SIMULATION AND OPTIMIZATION TASKS ---
+    @staticmethod
+    def _deck_signature(deck):
+        return tuple(
+            sorted(
+                f"{card.get('name', '')}:{card.get('count', 1)}"
+                for card in deck
+            )
+        )
+
+    def _start_optimizer_progress(self):
+        self._progress_run_id += 1
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
+        self._optimizer_progress = OptimizerProgressView(self, self.sim_frame)
+        return self._progress_run_id
+
+    def _apply_optimizer_progress(self, run_id, event):
+        if run_id != self._progress_run_id or not self.winfo_exists():
+            return
+        if self._optimizer_progress is None:
+            self._optimizer_progress = OptimizerProgressView(self, self.sim_frame)
+        self._optimizer_progress.update(event)
+
+    def _queue_optimizer_progress(self, run_id, event):
+        event_copy = dict(event)
+        try:
+            self.after(
+                0,
+                lambda: self._apply_optimizer_progress(run_id, event_copy),
+            )
+        except (RuntimeError, tkinter.TclError):
+            pass
+
+    def _schedule_optimizer_ui(self, callback):
+        try:
+            self.after(0, callback)
+        except (RuntimeError, tkinter.TclError):
+            pass
+
+    def _finish_optimizer_progress(
+        self,
+        run_id,
+        stats,
+        optimization_note=None,
+        expected_signature=None,
+    ):
+        if run_id != self._progress_run_id or not self.winfo_exists():
+            return
+        if (
+            expected_signature is not None
+            and self._deck_signature(self.deck_list) != expected_signature
+        ):
+            if self._optimizer_progress:
+                self._optimizer_progress.cancel("optimizer.deck_changed")
+            return
+        elapsed = None
+        if self._optimizer_progress:
+            self._optimizer_progress.complete()
+            elapsed = self._optimizer_progress.elapsed_seconds
+        self._last_progress_elapsed = elapsed
+        self._show_sim_results(stats, optimization_note=optimization_note)
+
+    def _fail_optimizer_progress(self, run_id):
+        if run_id != self._progress_run_id or not self.winfo_exists():
+            return
+        if self._optimizer_progress is None:
+            self._optimizer_progress = OptimizerProgressView(self, self.sim_frame)
+        self._optimizer_progress.fail()
+
     def _run_simulation(self):
         """Entry point for clicking the 'Analyze' button in the toolbar."""
         self.notebook.select(self.hand_tab)
-        self.sim_executor.submit(self._run_monte_carlo_task, self.deck_list)
-
-    def _run_monte_carlo_task(self, deck_list):
-        """Executes a Monte Carlo simulation in the background."""
-        self.after(
-            0,
-            lambda: self._show_sim_loading(tr("simulation.running")),
+        run_id = self._start_optimizer_progress()
+        self.sim_executor.submit(
+            self._run_monte_carlo_task,
+            list(self.deck_list),
+            run_id,
+            "final_simulation",
+            self._deck_signature(self.deck_list),
         )
+
+    def _run_monte_carlo_task(
+        self,
+        deck_list,
+        run_id=None,
+        phase="final_simulation",
+        expected_signature=None,
+    ):
+        """Executes a Monte Carlo simulation in the background."""
+        run_id = self._progress_run_id if run_id is None else run_id
         try:
             from src.card_logic import simulate_deck
 
-            stats = simulate_deck(deck_list, iterations=10000)
-            self.after(0, lambda: self._show_sim_results(stats))
-        except Exception as e:
-            self.after(0, lambda err=str(e): self._show_sim_error(err))
+            stats = simulate_deck(
+                deck_list,
+                iterations=10000,
+                progress_callback=lambda event: self._queue_optimizer_progress(
+                    run_id, event
+                ),
+                phase=phase,
+            )
+            if stats is None:
+                self._schedule_optimizer_ui(lambda: self._show_sim_results(stats))
+            else:
+                self._schedule_optimizer_ui(
+                    lambda: self._finish_optimizer_progress(
+                        run_id,
+                        stats,
+                        expected_signature=expected_signature,
+                    ),
+                )
+        except Exception:
+            logger.exception("[Optimizer] ERROR during Monte Carlo simulation")
+            self._schedule_optimizer_ui(
+                lambda: self._fail_optimizer_progress(run_id)
+            )
 
     def _auto_optimize_deck(self):
         """Entry point for the AI Auto-Optimize button."""
-        self.sim_executor.submit(self._run_auto_optimize_task)
-
-    def _run_auto_optimize_task(self):
-        """Background task that brute-forces deck permutations to find the mathematically optimal build."""
-        self.after(
-            0,
-            lambda: self._show_sim_loading(
-                tr("deck.optimizing")
-            ),
+        self.notebook.select(self.hand_tab)
+        run_id = self._start_optimizer_progress()
+        self.sim_executor.submit(
+            self._run_auto_optimize_task,
+            run_id,
+            self._deck_signature(self.deck_list),
         )
+
+    def _run_auto_optimize_task(self, run_id=None, expected_signature=None):
+        """Background task that brute-forces deck permutations to find the mathematically optimal build."""
+        run_id = self._progress_run_id if run_id is None else run_id
         try:
             base_deck = list(self.deck_list)
             base_sb = list(self.sb_list)
@@ -485,12 +591,28 @@ class CustomDeckPanel(ttk.Frame):
             )
 
             final_deck, final_sb, final_stats, opt_note = optimize_deck(
-                base_deck, base_sb, archetype_key, deck_colors
+                base_deck,
+                base_sb,
+                archetype_key,
+                deck_colors,
+                progress_callback=lambda event: self._queue_optimizer_progress(
+                    run_id, event
+                ),
             )
 
             if final_deck:
 
                 def finalize():
+                    if (
+                        expected_signature is not None
+                        and self._deck_signature(self.deck_list)
+                        != expected_signature
+                    ):
+                        if self._optimizer_progress:
+                            self._optimizer_progress.cancel(
+                                "optimizer.deck_changed"
+                            )
+                        return
                     self.deck_list = final_deck
                     self.sb_list = final_sb
 
@@ -504,46 +626,43 @@ class CustomDeckPanel(ttk.Frame):
                     self.sb_list.sort(key=card_sort_key)
 
                     self._update_tables()
-                    self._show_sim_results(final_stats, optimization_note=opt_note)
                     self._render_deck_stats()
                     self._draw_sample_hand()
                     self._update_basics_toolbar()
+                    self._finish_optimizer_progress(
+                        run_id,
+                        final_stats,
+                        optimization_note=opt_note,
+                    )
 
-                self.after(0, finalize)
+                self._schedule_optimizer_ui(finalize)
             else:
                 raise Exception(tr("deck.failed_optimize"))
-        except Exception as e:
+        except Exception:
+            logger.exception("[Optimizer] ERROR during automatic deck optimization")
 
             def show_err():
-                self._show_sim_error(str(e))
+                self._fail_optimizer_progress(run_id)
                 import tkinter.messagebox
 
                 tkinter.messagebox.showwarning(
-                    tr("deck.optimization_failed"), str(e), parent=self
+                    tr("deck.optimization_failed"),
+                    tr("optimizer.error_detail"),
+                    parent=self,
                 )
 
-            self.after(0, show_err)
+            self._schedule_optimizer_ui(show_err)
 
     def _show_sim_loading(self, msg=None):
-        for widget in self.sim_frame.winfo_children():
-            widget.destroy()
-
-        lbl = ttk.Label(
-            self.sim_frame,
-            text=msg or tr("simulation.running"),
-            font=Theme.scaled_font(10, "italic"),
-            bootstyle="secondary",
-            justify="center",
-            wraplength=Theme.scaled_val(300),
-        )
-        lbl.is_dynamic_wrap = True
-        lbl.pack(pady=Theme.scaled_val(20))
-
-        progress = ttk.Progressbar(self.sim_frame, mode="indeterminate")
-        progress.pack(fill="x", padx=Theme.scaled_val(20))
-        progress.start(15)
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
+        self._optimizer_progress = OptimizerProgressView(self, self.sim_frame)
+        if msg:
+            self._optimizer_progress.phase_label.config(text=msg)
 
     def _show_sim_error(self, error):
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
         for widget in self.sim_frame.winfo_children():
             widget.destroy()
         lbl = ttk.Label(
@@ -560,6 +679,8 @@ class CustomDeckPanel(ttk.Frame):
         if not sim_frame or not sim_frame.winfo_exists():
             return
 
+        if self._optimizer_progress:
+            self._optimizer_progress.stop()
         for widget in sim_frame.winfo_children():
             widget.destroy()
 
@@ -570,6 +691,21 @@ class CustomDeckPanel(ttk.Frame):
                 bootstyle="warning",
             ).pack(pady=Theme.scaled_val(20))
             return
+
+        elapsed = getattr(self, "_last_progress_elapsed", None)
+        if elapsed is not None:
+            from src.ui.optimizer_progress import format_duration
+
+            ttk.Label(
+                sim_frame,
+                text=tr(
+                    "optimizer.completed_with_time",
+                    time=format_duration(elapsed),
+                ),
+                font=Theme.scaled_font(10, "bold"),
+                bootstyle="success",
+            ).pack(pady=Theme.scaled_val((0, 8)))
+            self._last_progress_elapsed = None
 
         def _add_stat(label, value, thresholds, reverse=False, is_percent=True):
             frame = ttk.Frame(sim_frame)
@@ -1155,16 +1291,15 @@ class CustomDeckPanel(ttk.Frame):
     def _apply_auto_lands(self):
         """Dispatches the brute-force mana optimization to a background thread."""
         self.notebook.select(self.hand_tab)
-        self.sim_executor.submit(self._run_auto_lands_task)
-
-    def _run_auto_lands_task(self):
-        self.after(
-            0,
-            lambda: self._show_sim_loading(
-                tr("simulation.optimizing_mana")
-            ),
+        run_id = self._start_optimizer_progress()
+        self.sim_executor.submit(
+            self._run_auto_lands_task,
+            run_id,
+            self._deck_signature(self.deck_list),
         )
 
+    def _run_auto_lands_task(self, run_id=None, expected_signature=None):
+        run_id = self._progress_run_id if run_id is None else run_id
         try:
             from src.advisor.mana_base import brute_force_mana_base, get_strict_colors
 
@@ -1180,7 +1315,10 @@ class CustomDeckPanel(ttk.Frame):
 
             if not spells:
                 self.after(
-                    0, lambda: self._show_sim_error(tr("simulation.add_spells_first"))
+                    0,
+                    lambda: self._show_sim_error(
+                        tr("simulation.add_spells_first")
+                    ),
                 )
                 return
 
@@ -1204,10 +1342,24 @@ class CustomDeckPanel(ttk.Frame):
 
             # Trigger the AI brute force
             basics_to_add = brute_force_mana_base(
-                spells, non_basic_lands, deck_colors, forced_count=needed_basics
+                spells,
+                non_basic_lands,
+                deck_colors,
+                forced_count=needed_basics,
+                progress_callback=lambda event: self._queue_optimizer_progress(
+                    run_id, event
+                ),
             )
 
             def _finalize():
+                if (
+                    expected_signature is not None
+                    and self._deck_signature(self.deck_list)
+                    != expected_signature
+                ):
+                    if self._optimizer_progress:
+                        self._optimizer_progress.cancel("optimizer.deck_changed")
+                    return
                 # Wipe old basics
                 self.deck_list = [
                     c for c in self.deck_list if c["name"] not in constants.BASIC_LANDS
@@ -1226,12 +1378,21 @@ class CustomDeckPanel(ttk.Frame):
                 self._update_tables()
                 self._render_deck_stats()
                 self._update_basics_toolbar()
-                self._run_monte_carlo_task(self.deck_list)
+                self.sim_executor.submit(
+                    self._run_monte_carlo_task,
+                    list(self.deck_list),
+                    run_id,
+                    "final_simulation",
+                    self._deck_signature(self.deck_list),
+                )
 
-            self.after(0, _finalize)
+            self._schedule_optimizer_ui(_finalize)
 
-        except Exception as e:
-            self.after(0, lambda err=str(e): self._show_sim_error(err))
+        except Exception:
+            logger.exception("[Optimizer] ERROR during mana optimization")
+            self._schedule_optimizer_ui(
+                lambda: self._fail_optimizer_progress(run_id)
+            )
 
     def _add_specific_basic(self, color_name):
         color_map = {
